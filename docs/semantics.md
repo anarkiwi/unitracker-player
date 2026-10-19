@@ -171,7 +171,7 @@ A command applies from the step that carries it, after its note, in grammar orde
 
 | command | meaning |
 |---|---|
-| `!run:c3`, `!run:pw2`, `!run:f1` | starts that program in the slot its prefix names |
+| `!run:c3`, `!run:pw2`, `!run:f1` | starts that program in the slot its prefix names; refused on a voice that has no instrument yet |
 | `!run:none` | stops the control slot |
 | `!pw:n`, `!pw:xN` | the pulse width's command modulator becomes `n` (a constant) or `xN` |
 | `!pw:none` | ends `!pw`, stops the pulse slot and the pulse modulator; the pulse width holds |

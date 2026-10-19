@@ -373,6 +373,8 @@ class Player:
         if event.ins is not None:
             self._ins[v] = event.ins
         ins = self._ins[v]
+        if ins is None and any(k == "run" and val is not None for k, val in event.ops):
+            raise PlayError(f"voice {v + 1}: !run at tick {t} on a voice with no instrument")
         if not ins or not ins.restart or event.legato:
             return [(t, (v, event, transpose, ins, None, None))]
         *ahead, (last, _) = ins.restart
