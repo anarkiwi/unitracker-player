@@ -183,6 +183,25 @@ def test_an_event_applies_at_its_restart_lookahead(phrase, ins, address, expecte
     assert reg(play(doc(phrase, ins)), address) == expected
 
 
+HR3 = "[{hold: 2, gate: 0}, {ctrl: 9}, {}, end]"
+
+
+@pytest.mark.parametrize(
+    "phrase, address, expected",
+    [
+        ("[C4.i1, off!sr:155, -*2]", 4, [65] * 3 + [64] * 21),
+        ("[C4.i1, off!sr:155, -*2]", 6, [240] * 5 + [155] * 19),
+        ("[C4.i1, -!sr:155, -*2]", 6, [240] * 5 + [155] * 19),
+        ("[C4.i1, off, on!sr:155, -]", 4, [65] * 3 + [64] * 6 + [65] * 15),
+        ("[C4.i1, off, on!sr:155, -]", 6, [240] * 11 + [155] * 13),
+    ],
+)
+def test_a_note_less_event_splits_at_its_restart_lookahead(phrase, address, expected):
+    """An off or on sets its gate on the restart's first lookahead row's tick and the event's
+    commands apply on the last lookahead row's: here 3 and 1 ticks before the step."""
+    assert reg(play(doc(phrase, LEAD % HR3)), address) == expected
+
+
 def test_a_note_triggers_on_its_step_after_its_restart_lookahead():
     """The frequency and the instrument's envelope take the note on its step."""
     frames = play(doc("[C4.i1, D4, -*2]", LEAD % HR))

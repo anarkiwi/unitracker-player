@@ -2,7 +2,7 @@
 
 import itertools
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from tqdm import tqdm
@@ -359,33 +359,42 @@ class Player:
         self._ins = [None] * song.voices
         self._events = defaultdict(list)
         self._lookahead = defaultdict(list)
-        self._init = [self._schedule(0, v, e, 0)[1] for v, e in enumerate(song.init)]
+        self._init = [i for v, e in enumerate(song.init) for _, i in self._schedule(0, v, e, 0)]
 
     @property
     def finished(self) -> bool:
         """Whether the song has ended at the current tick."""
         return self._seq.end is not None and self.tick >= self._seq.end
 
-    def _schedule(self, t: int, v: int, event: CEvent, transpose: int) -> tuple:
+    def _schedule(self, t: int, v: int, event: CEvent, transpose: int) -> list:
+        """The ``(tick, event item)`` pairs of an event: a note-less one split at its
+        restart's lookahead, its gate on the first row's tick and its commands on the last's."""
         if event.ins is not None:
             self._ins[v] = event.ins
-        ins, last = self._ins[v], None
-        if ins and ins.restart and not event.legato:
-            if isinstance(event.note, int):
-                *ahead, (last, _) = ins.restart
-                for row, before in ahead:
-                    if t - before >= 0:
-                        self._lookahead[t - before].append((v, row))
-            elif event.note is not None or event.ops:
-                t = max(t - ins.restart[0][1], 0)
-        return t, (v, event, transpose, ins, last)
+        ins = self._ins[v]
+        if not ins or not ins.restart or event.legato:
+            return [(t, (v, event, transpose, ins, None))]
+        *ahead, (last, _) = ins.restart
+        if isinstance(event.note, int):
+            for row, before in ahead:
+                if t - before >= 0:
+                    self._lookahead[t - before].append((v, row))
+            return [(t, (v, event, transpose, ins, last))]
+        if not ahead:
+            return [(t, (v, event, transpose, ins, None))]
+        parts = [(ahead[0][1], replace(event, ops=())), (ahead[-1][1], replace(event, note=None))]
+        return [
+            (max(t - before, 0), (v, part, transpose, ins, None))
+            for before, part in parts
+            if part.note is not None or part.ops
+        ]
 
     def step(self) -> list | None:
         """Plays one tick."""
         t = self.tick
         for tick, v, event, transpose in self._seq.advance(t + self.song.lookahead):
-            tick, item = self._schedule(tick, v, event, transpose)
-            self._events[tick].append(item)
+            for at, item in self._schedule(tick, v, event, transpose):
+                self._events[at].append(item)
         if self.finished:
             return None
         if t == 0:
