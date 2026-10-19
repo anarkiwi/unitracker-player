@@ -143,6 +143,53 @@ def test_a_hard_restart_lands_before_the_note(restart, lead):
     assert reg(frames, 6)[:12] == [240] * (6 - lead) + [0] * lead + [240] * 6
 
 
+HR = "[{hold: 1, gate: 0, ad: 15, sr: 0}, {ctrl: 9}, end]"
+LEAD = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], restart: %s}"
+
+
+@pytest.mark.parametrize(
+    "phrase, ins, address, expected",
+    [
+        ("[C4.i1, off, -*2]", LEAD % HR, 4, [65] * 5 + [64] * 19),
+        ("[C4.i1, off, -*2]", LEAD % HR, 5, [9] * 24),
+        ("[C4.i1, off, -*2]", LEAD % HR, 6, [240] * 24),
+        ("[C4.i1, off, on, -]", LEAD % HR, 4, [65] * 5 + [64] * 6 + [65] * 13),
+        ("[C4.i1, -!sr:155, -*2]", LEAD % HR, 6, [240] * 5 + [155] * 19),
+        ("[C4.i1, -!sr:155, -*2]", LEAD % HR, 5, [9] * 24),
+        ("[C4.i1, -, -!sr:155, -]", LEAD % HR, 6, [240] * 11 + [155] * 13),
+        ("[-.i1!sr:155, -*3]", LEAD % HR, 6, [155] * 24),
+        ("[C4.i1, D4, -*2]", LEAD % HR, 4, [65] * 5 + [64] + [65] * 18),
+        ("[C4.i1, D4, -*2]", LEAD % HR, 5, [9] * 5 + [15] + [9] * 18),
+        (
+            "[C4.i1, off, -*2]",
+            LEAD % "[{hold: 2, gate: 0}, {ctrl: 9}, end]",
+            4,
+            [65] * 4 + [64] * 20,
+        ),
+        ("[C4.i1, off, -*2]", LEAD % "[{ctrl: 9}, end]", 4, [65] * 6 + [64] * 18),
+        ("[C4.i1, off, -*2]", I1, 4, [65] * 6 + [64] * 18),
+        ("[C4.i1, -!sr:155, -*2]", I1, 6, [240] * 6 + [155] * 18),
+        ("[C4.i1, off.i2, -*2]", {"i1": LEAD % HR, "i2": I1}, 4, [65] * 6 + [64] * 18),
+        ("[C4.i2, off.i1, -*2]", {"i1": LEAD % HR, "i2": I1}, 4, [65] * 5 + [64] * 19),
+        ("[C4.i1, D4!legato, -*2]", LEAD % HR, 4, [65] * 24),
+        ("[C4.i1, -!sr:155!legato, -*2]", LEAD % HR, 6, [240] * 6 + [155] * 18),
+    ],
+)
+def test_an_event_applies_at_its_restart_lookahead(phrase, ins, address, expected):
+    """A note's restart rows run before it and the note stays on its tick; an off, on or `-`
+    with commands applies whole at the restart's first row's tick (tick 0 at the latest) and
+    runs no row; without a lookahead row, without a restart, a `-` without commands and under
+    !legato the event stays on its step."""
+    assert reg(play(doc(phrase, ins)), address) == expected
+
+
+def test_a_note_triggers_on_its_step_after_its_restart_lookahead():
+    """The frequency and the instrument's envelope take the note on its step."""
+    frames = play(doc("[C4.i1, D4, -*2]", LEAD % HR))
+    assert freq(frames) == [F(48)] * 6 + [F(50)] * 18
+    assert reg(frames, 6) == [240] * 5 + [0] + [240] * 18
+
+
 @pytest.mark.parametrize(
     "second, gates", [("D4!legato", [65] * 3 + [64] * 21), ("D4", ([65] * 3 + [64] * 3) * 2)]
 )

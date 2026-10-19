@@ -38,8 +38,9 @@ it begins, after the events of every voice at that tick have applied their tempo
 `!tempo` sets every voice's tempo and returns every voice's alternation to `a`, `!vtempo` this
 voice's, from the step that begins at or after the command.
 
-A voice's event applies at the first tick of its step; `*k` makes it last `k` steps, the steps
-after its first empty but timed by the alternation.
+A voice's event applies at the first tick of its step, or earlier (see
+[Hard restart](#hard-restart)); `*k` makes it last `k` steps, the steps after its first empty
+but timed by the alternation.
 
 ## Timeline
 
@@ -102,12 +103,16 @@ note, the programs, the modulators and the commands are untouched, and no restar
 
 ## Hard restart
 
-An instrument's `restart` program is anchored to each note without `!legato` that plays the
-instrument: its last row applies on the note's tick, before the note, and with a `ctrl` sets
-the gate on; each earlier row `i` applies `hold_i + wait_(i+1)` ticks before row `i + 1`. The
-rows apply with their row meaning at their tick, before the voice's events of that tick, even
-before the voice's previous event; a row that falls before tick 0 is dropped. The restart's
-ending is ignored.
+A voice's restart program is the `restart` of its instrument as of the event (the event's
+`.iN`, else the voice's last). It is anchored to every event of the voice without `!legato`
+but a `-` without commands: its last row falls on the event's tick and each earlier row `i`
+`hold_i + wait_(i+1)` ticks before row `i + 1`. A note runs the rows: each applies with its row
+meaning at its tick, before the voice's events of that tick, even before the voice's previous
+event; a row that falls before tick 0 is dropped; the last applies before the note and with a
+`ctrl` sets the gate on. The note and its commands stay on its tick. An `off`, `on` or `-`
+event runs no row; the event, its gate and its commands but tempo ones, applies at its first row's tick, or
+tick 0 if that is earlier, as the voice's event of that tick. The restart's ending is
+ignored.
 
 ## Programs
 
@@ -189,7 +194,7 @@ that gave it), another command of its key, or its `none`.
 ## Order within a tick
 
 1. Events: at tick 0 the `init` events in voice order; then, per voice in order, the restart
-   rows due this tick and the voice's event if its step begins this tick.
+   rows due this tick and the voice's events due this tick.
 2. Programs: every voice's control slot, then every pulse slot, then every filter slot, each in
    voice order. A program started in a slot already visited this tick applies its rows from the
    next tick.

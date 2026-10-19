@@ -359,7 +359,7 @@ class Player:
         self._ins = [None] * song.voices
         self._events = defaultdict(list)
         self._lookahead = defaultdict(list)
-        self._init = [self._schedule(0, v, e, 0) for v, e in enumerate(song.init)]
+        self._init = [self._schedule(0, v, e, 0)[1] for v, e in enumerate(song.init)]
 
     @property
     def finished(self) -> bool:
@@ -370,18 +370,22 @@ class Player:
         if event.ins is not None:
             self._ins[v] = event.ins
         ins, last = self._ins[v], None
-        if isinstance(event.note, int) and not event.legato and ins and ins.restart:
-            *ahead, (last, _) = ins.restart
-            for row, before in ahead:
-                if t - before >= 0:
-                    self._lookahead[t - before].append((v, row))
-        return (v, event, transpose, ins, last)
+        if ins and ins.restart and not event.legato:
+            if isinstance(event.note, int):
+                *ahead, (last, _) = ins.restart
+                for row, before in ahead:
+                    if t - before >= 0:
+                        self._lookahead[t - before].append((v, row))
+            elif event.note is not None or event.ops:
+                t = max(t - ins.restart[0][1], 0)
+        return t, (v, event, transpose, ins, last)
 
     def step(self) -> list | None:
         """Plays one tick."""
         t = self.tick
         for tick, v, event, transpose in self._seq.advance(t + self.song.lookahead):
-            self._events[tick].append(self._schedule(tick, v, event, transpose))
+            tick, item = self._schedule(tick, v, event, transpose)
+            self._events[tick].append(item)
         if self.finished:
             return None
         if t == 0:
