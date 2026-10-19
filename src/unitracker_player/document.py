@@ -1,12 +1,11 @@
 """A canonical document as plain dataclasses, transformed from its parse tree."""
 
-import functools
 import json
 import re
 from dataclasses import dataclass, field
 
-from lark import Lark, Token, Transformer, exceptions
-from unitracker_grammar import GRAMMAR, CanonicalError
+from lark import Token, Transformer, exceptions
+from unitracker_grammar import CanonicalError, parser
 
 NONE = None
 _MISSING = object()
@@ -174,8 +173,8 @@ def _chain(prefix, keys):
 
 
 class ToDocument(Transformer):
-    """The parse tree of ``canonical.lark`` (built keeping every token) to a Document; each
-    method is the grammar rule of its name."""
+    """The parse tree of ``canonical.lark`` to a Document; each method is the grammar rule of
+    its name."""
 
     # pylint: disable=too-many-public-methods,missing-function-docstring
 
@@ -281,7 +280,7 @@ class ToDocument(Transformer):
 
     @staticmethod
     def section(children):
-        kind = _words(children)[0].rstrip(":")
+        kind = children[0].type.lower()
         values = _values(children)
         entries = list(zip(values[::2], values[1::2]))
         if kind == "x":
@@ -391,20 +390,18 @@ class ToDocument(Transformer):
     def factor(children):
         values, words = _values(children), _words(children)
         if not words:
-            return ("int", values[0])
+            if len(values) == 2:
+                return ("T", *values)
+            return ("int", values[0]) if isinstance(values[0], int) else values[0]
         head = words[0]
         if head in ("v", "φ", "N"):
             return ({"v": "v", "φ": "phi", "N": "N"}[head],)
         if head == "-":
             (inner,) = values
             return ("int", -inner[1]) if inner[0] == "int" else ("neg", inner)
-        if head == "[":
-            return ("T", values[0], values[1])
         if head in ("F(", "abs(", "min(", "max("):
             return (head[:-1], *values)
-        if len(values) == 2:
-            return ("cmp", words[1], values[0], values[1])
-        return values[0]
+        return ("cmp", words[0], values[0], values[1])
 
 
 for _name, _method in {
@@ -434,17 +431,6 @@ def _modulation(kind: str, value):
     if isinstance(value, Expr):
         return Program((Row(keys=(("pw" if kind == "pw" else "cut", value),)),))
     return value
-
-
-@functools.lru_cache(maxsize=1)
-def parser() -> Lark:
-    """The LALR parser of ``unitracker_grammar``'s grammar, keeping every token."""
-    return Lark(
-        GRAMMAR.read_text(encoding="utf-8"),
-        parser="lalr",
-        lexer="contextual",
-        keep_all_tokens=True,
-    )
 
 
 def read(text: str) -> Document:
