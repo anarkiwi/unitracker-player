@@ -110,9 +110,10 @@ but a `-` without commands: its last row falls on the event's tick and each earl
 meaning at its tick, before the voice's events of that tick, even before the voice's previous
 event; a row that falls before tick 0 is dropped; the last applies before the note and with a
 `ctrl` sets the gate on. The note and its commands stay on its tick. An `off`, `on` or `-`
-event runs no row; the event, its gate and its commands but tempo ones, applies at its first row's tick, or
-tick 0 if that is earlier, as the voice's event of that tick. The restart's ending is
-ignored.
+event runs no row: the rows before the last are its lookahead, and it applies its gate at the
+first lookahead row's tick and its commands but tempo ones at the last lookahead row's, each
+at tick 0 if that is earlier, as the voice's event of that tick; with no lookahead row it
+stays on its tick. The restart's ending is ignored.
 
 ## Programs
 
