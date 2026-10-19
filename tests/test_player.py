@@ -540,3 +540,26 @@ def test_refusals(text, match):
     entry that disagrees with which phrases ended, and a name defined twice are refused."""
     with pytest.raises(ValueError, match=match):
         play(text, 100)
+
+
+def test_a_split_event_keeps_its_compiled_event_in_both_parts():
+    """A subclass sees the phrase's one compiled event at both of its parts' ticks."""
+    seen = []
+
+    class Recorder(Player):
+        """Records each event part it plays."""
+
+        def _event(self, t, v, event, *rest):  # pylint: disable=arguments-differ
+            seen.append((t, event, rest[-1]))
+            super()._event(t, v, event, *rest)
+
+    song = load(doc("[C4.i1, off!sr:155, -*2]", LEAD % HR3))
+    player = Recorder(song)
+    for _ in range(8):
+        player.step()
+    off = song.timeline[0][0][1][1]
+    assert [(t, e is off, p) for t, e, p in seen] == [
+        (0, False, None),
+        (3, True, "gate"),
+        (5, True, "ops"),
+    ]
