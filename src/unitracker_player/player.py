@@ -2,7 +2,7 @@
 
 import itertools
 from collections import defaultdict
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import numpy as np
 from tqdm import tqdm
@@ -368,25 +368,26 @@ class Player:
 
     def _schedule(self, t: int, v: int, event: CEvent, transpose: int) -> list:
         """The ``(tick, event item)`` pairs of an event: a note-less one split at its
-        restart's lookahead, its gate on the first row's tick and its commands on the last's."""
+        restart's lookahead, its gate (part ``gate``) on the first row's tick and its commands
+        (part ``ops``) on the last's."""
         if event.ins is not None:
             self._ins[v] = event.ins
         ins = self._ins[v]
         if not ins or not ins.restart or event.legato:
-            return [(t, (v, event, transpose, ins, None))]
+            return [(t, (v, event, transpose, ins, None, None))]
         *ahead, (last, _) = ins.restart
         if isinstance(event.note, int):
             for row, before in ahead:
                 if t - before >= 0:
                     self._lookahead[t - before].append((v, row))
-            return [(t, (v, event, transpose, ins, last))]
+            return [(t, (v, event, transpose, ins, last, None))]
         if not ahead:
-            return [(t, (v, event, transpose, ins, None))]
-        parts = [(ahead[0][1], replace(event, ops=())), (ahead[-1][1], replace(event, note=None))]
+            return [(t, (v, event, transpose, ins, None, None))]
+        parts = [(ahead[0][1], "gate", event.note), (ahead[-1][1], "ops", event.ops)]
         return [
-            (max(t - before, 0), (v, part, transpose, ins, None))
-            for before, part in parts
-            if part.note is not None or part.ops
+            (max(t - before, 0), (v, event, transpose, ins, None, part))
+            for before, part, has in parts
+            if has
         ]
 
     def step(self) -> list | None:
@@ -526,8 +527,9 @@ class Player:
             self.vol = value & 15
 
     def _event(
-        self, t: int, v: int, event: CEvent, transpose: int, ins, last
+        self, t: int, v: int, event: CEvent, transpose: int, ins, last, part
     ):  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        """Event ``event``, or its ``part``: ``gate`` its gate alone, ``ops`` its commands."""
         voice = self.voices[v]
         if last is not None:
             self._row(v, last, t, True)
@@ -537,9 +539,9 @@ class Player:
                 voice.relative, voice.absolute, voice.gate = 0, None, 1
                 if ins is not None:
                     self._instrument(v, ins, event, t)
-        elif event.note is not None:
+        elif event.note is not None and part != "ops":
             voice.gate = 1 if event.note == "on" else 0
-        for key, value in event.ops:
+        for key, value in event.ops if part != "gate" else ():
             self._command(v, key, value, t)
 
     def _instrument(self, v: int, ins: CInstrument, event: CEvent, t: int):
