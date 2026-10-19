@@ -515,6 +515,7 @@ def _twice(text: str) -> str:
             "voice 1",
         ),
         (_twice(doc()), "twice"),
+        (doc(phrase="[-!run:c1, C4.i1, -*2]", ctrl={"c1": ARP}), "no instrument"),
     ],
     ids=[
         "version",
@@ -532,12 +533,14 @@ def _twice(text: str) -> str:
         "continues-ended",
         "restarts-playing",
         "twice",
+        "run-no-instrument",
     ],
 )
 def test_refusals(text, match):
     """Another version, more than 3 voices, a play row or init row of the wrong length, a tempo
     of 0, a loop outside its rows, an undefined name or table, a program looping in no time, an
-    entry that disagrees with which phrases ended, and a name defined twice are refused."""
+    entry that disagrees with which phrases ended, a name defined twice and a program run on a
+    voice with no instrument are refused."""
     with pytest.raises(ValueError, match=match):
         play(text, 100)
 
