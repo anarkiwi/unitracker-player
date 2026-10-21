@@ -10,6 +10,7 @@ from unitracker_grammar import PAL_HZ
 
 from unitracker_player.document import Document, Expr, Program, note_number, read
 from unitracker_player.expr import compile_expr, constant, note_table, offset
+from unitracker_player.modulation import SHAPES
 
 VERSION = "1.20"
 MAX_VOICES = 3
@@ -33,7 +34,8 @@ class CProgram:
 
 @dataclass(frozen=True)
 class CInstrument:
-    """A compiled instrument; ``restart`` is its rows with the ticks each precedes the note."""
+    """A compiled instrument; ``fn`` is its modulator's function ``f(bag, v, t, note)``, ``p0``
+    the bag it starts from, and ``restart`` is its rows with the ticks each precedes the note."""
 
     ad: int | None
     sr: int | None
@@ -41,6 +43,8 @@ class CInstrument:
     pw: CProgram | None
     filter: CProgram | None
     freq: object
+    fn: object | None
+    p0: dict | None
     restart: tuple | None
 
 
@@ -148,6 +152,15 @@ class _Compiler:
             ticks.append(ahead)
         return tuple(zip(prog.rows, reversed(ticks)))
 
+    def shape(self, fn):
+        if fn is None:
+            return None
+        if callable(fn):
+            return fn
+        if fn not in SHAPES:
+            raise PlayError(f"unknown modulator {fn}")
+        return SHAPES[fn]
+
     def instrument(self, name: str | None) -> CInstrument | None:
         if name is None:
             return None
@@ -161,6 +174,8 @@ class _Compiler:
                 self.program(ins.pw),
                 self.program(ins.filter),
                 None if ins.freq is None else self.fn(ins.freq, freq=True),
+                self.shape(ins.fn),
+                dict(ins.p0) if ins.p0 else None,
                 self.restart(ins.restart),
             )
         return self.memo[key]
@@ -335,6 +350,7 @@ class _Voice:
         self.note = self.absolute = None
         self.relative = 0
         self.freq_prog = self.freq_cmd = self.pw_prog = self.pw_cmd = None
+        self.osc = None
         self.slots = [[None, 0, 0] for _ in range(3)]
 
     @property
@@ -559,6 +575,7 @@ class Player:
         if ins.filter is not None and not event.keep_filter:
             self._start(v, FILTER, ins.filter, t)
         voice.freq_prog = None if ins.freq is None else [ins.freq, 0]
+        self._arm_osc(voice, ins.fn, ins.p0)
         voice.freq_cmd = voice.pw_cmd = None
         if self.cut_cmd and self.cut_cmd[2] == v:
             self.cut_cmd = None
@@ -588,11 +605,31 @@ class Player:
             self.cut_cmd = [value, 0, v]
         elif key == "freq":
             voice.freq_cmd = None if value is None else [value, 0]
+            if value is not None:
+                voice.osc = None
+        elif key == "set":
+            if voice.osc is None:
+                raise PlayError(f"voice {v + 1}: !set at tick {t} with no frequency modulator")
+            voice.osc[1].update(dict(value) if value is not None else {})
         else:
             self._global(v, key, value)
 
+    def _arm_osc(self, voice, fn, p0):
+        if fn is None:
+            voice.osc = None
+            return
+        voice.osc = [fn, dict(p0) if p0 else {}, 0]
+
     def _fire(self):
-        for voice in self.voices:
+        for vix, voice in enumerate(self.voices):
+            if voice.osc is not None:
+                n = voice.sounding
+                base = self.song.table(n) if n is not None else 0
+                fn, bag, tick = voice.osc
+                base = (base + bag.get("detune", 0) * vix) & FREQ_MASK
+                voice.freq = fn(bag, voice.freq, tick, base) & FREQ_MASK
+                voice.osc[2] += 1
+                continue
             mod, n = voice.freq_cmd or voice.freq_prog, voice.sounding
             if mod:
                 voice.freq = mod[0](voice.freq, mod[1], n or 0) & FREQ_MASK
