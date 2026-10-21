@@ -29,6 +29,7 @@ _VALUES = {
     "VERSION",
     "CTRLMASK",
     "NONE",
+    "NAME",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
@@ -77,6 +78,8 @@ class Instrument:
     pw: str | Program | None = None
     filter: str | Program | None = None
     freq: Expr | None = None
+    fn: object | None = None
+    p0: dict | None = None
     restart: str | Program | None = None
 
 
@@ -307,6 +310,39 @@ class ToDocument(Transformer):
     @staticmethod
     def modulation(children):
         return _values(children)[0]
+
+    @staticmethod
+    def ins_fn(children):
+        """``mod: NAME`` and its parameter bag as ``{fn: NAME, p0: the bag}``, the instrument's
+        ``restart`` where it has no modulator, and either where the two share an instrument."""
+        values = _values(children)
+        name = next((v for v in values if not isinstance(v, dict)), None)
+        if name is None:
+            return next((c for c in values if isinstance(c, dict)), {})
+        bag = next((c for c in values if isinstance(c, dict) and "restart" not in c), {})
+        rest = next((c for c in values if isinstance(c, dict) and "restart" in c), {})
+        return {"fn": name, "p0": bag, **rest}
+
+    @staticmethod
+    def param_bag(children):
+        return dict(_values(children))
+
+    @staticmethod
+    def pname_val(children):
+        name, value = _values(children)
+        return str(name), value
+
+    @staticmethod
+    def pname_list(children):
+        return list(_values(children))
+
+    @staticmethod
+    def cmd_set(children):
+        """The event's ``!set`` writes, ``{key: value}``, into a one ``set`` command."""
+        flat = [c for c in _values(children) if not isinstance(c, dict)]
+        rest = next((c for c in children if isinstance(c, dict)), {})
+        bag = dict(zip(flat[::2], flat[1::2]))
+        return {"set": bag, **rest} if bag else rest
 
     @staticmethod
     def row_(children):
