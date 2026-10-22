@@ -202,6 +202,32 @@ def test_a_note_less_event_splits_at_its_restart_lookahead(phrase, address, expe
     assert reg(play(doc(phrase, LEAD % HR3)), address) == expected
 
 
+FIRST_TICK = "[{hold: 2, gate: 0, ad: 15, sr: 0}, {ctrl: 9, gate: 1, ad: 9, sr: 240}, {}, end]"
+
+
+@pytest.mark.parametrize(
+    "phrase, restart, address, expected",
+    [
+        ("[C4.i1, D4, -*2]", FIRST_TICK, 5, [9] * 3 + [15] * 2 + [9] * 19),
+        ("[C4.i1, D4!ad:10, -*2]", FIRST_TICK, 5, [9] * 3 + [15] * 2 + [10] * 19),
+        ("[C4.i1, D4!sr:155, -*2]", FIRST_TICK, 6, [240] * 3 + [0] * 2 + [155] * 19),
+        ("[C4.i1, D4!sr:155, -*2]", FIRST_TICK, 5, [9] * 3 + [15] * 2 + [9] * 19),
+        ("[C4.i1, D4!ad:10!legato, -*2]", FIRST_TICK, 5, [9] * 6 + [10] * 18),
+        ("[C4.i1!ad:10, -*3]", FIRST_TICK, 5, [10] * 24),
+        ("[C4.i1, D4!ad:10, -*2]", HR, 5, [9] * 5 + [10] * 19),
+        ("[C4.i1, D4!ad:10, -*2]", "[{ctrl: 9}, end]", 5, [9] * 6 + [10] * 18),
+    ],
+)
+def test_a_notes_envelope_commands_apply_with_its_restarts_first_tick_row(
+    phrase, restart, address, expected
+):
+    """A note's !ad and !sr apply after its restart's last lookahead row, on that row's tick,
+    winning over the row's own ad and sr, and again on the note's tick after its instrument;
+    its other commands, a dropped row, a restart of one row and !legato leave them on its
+    tick."""
+    assert reg(play(doc(phrase, LEAD % restart)), address) == expected
+
+
 def test_a_note_triggers_on_its_step_after_its_restart_lookahead():
     """The frequency and the instrument's envelope take the note on its step."""
     frames = play(doc("[C4.i1, D4, -*2]", LEAD % HR))
