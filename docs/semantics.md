@@ -160,8 +160,7 @@ Values wider than their field keep their low bits.
 
 A modulator `e` drives one cell: a voice's frequency (16 bits), a voice's pulse width (12 bits)
 or the one cutoff (11 bits). Each cell has a program modulator, set by program rows and
-instruments, and a command modulator, set by commands, which owns the cell while it is set
-(from its first firing; see [Holds](#holds)). The
+instruments, and a command modulator, set by commands, which owns the cell while it is set. The
 owning modulator fires once per tick: `v' = e(v, φ, N)` wrapped to the cell's width, `v` the
 cell's value before the firing, then φ + 1, but on its cell's hold ticks (see [Holds](#holds)).
 A modulator starts with φ = 0 at the tick it is set and fires that tick,
@@ -181,12 +180,12 @@ define is refused.
 modulator holds instead of firing; `ctrl.freq`, `ctrl.pw` and `ctrl.cut` name them for the
 modulators a control program's row sets, and `freq`, `pw` and `cut` for every other. On a hold
 tick φ does not advance and the cell takes the modulator's last firing again, with that firing's
-`v` and φ and the current `N`, or, before its first firing, its value at φ = -1 with the
-cell's `v`. A closed form of `N` and φ thus follows a change of
-`N`, and a modulator that reads `v` keeps its value. A command owns its cell only from its first
-firing: held before it, its cell's program modulator, or no modulator, drives the cell. A shape
-(`mod:`) holds its tick `t` as a `freq` modulator. A voice's events hold its frequency and pulse
-width modulators; the cutoff's are those of the voice that set its modulator.
+`v` and φ and the current `N`, so a closed form of `N` and φ follows a change of `N` and a
+modulator that reads `v` keeps its value. Before its first firing, a frequency modulator set on
+the tick a note without `!legato` starts takes its value at φ = -1 with the cell's `v`; every
+other keeps its cell's value. A shape (`mod:`) holds its tick `t` as a `freq` modulator. A
+voice's events hold its frequency and pulse width modulators; the cutoff's are those of the
+voice that set its modulator.
 
 | event | the ticks of a voice it names |
 |---|---|

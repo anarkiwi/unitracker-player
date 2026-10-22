@@ -13,12 +13,12 @@ SWEEP = "{ctrl: [{ctrl: 65}, end], pw: 10*φ + 1}"
 
 def sweep(held: set, ticks: int, start: int = 0) -> list:
     """``10*φ + 1`` from ``start``, φ advancing on every tick but ``held``, 0 before; a held
-    tick before the first firing shows its value at φ -1."""
+    tick before the first firing keeps the pulse width."""
     out, phi, last = [], 0, 0
     for t in range(ticks):
         if t >= start:
             if t in held:
-                out.append(last if phi else -9 & 0xFFF)
+                out.append(last)
                 continue
             last = 10 * phi + 1
             phi += 1
@@ -49,10 +49,10 @@ def test_a_pulse_holds_on_its_events(hold, held):
 
 
 def test_a_modulator_held_on_the_tick_it_starts_fires_first_on_its_next():
-    """A note starts the instrument's pulse on a held step: the step shows it at φ -1, and it
-    fires first on the next tick."""
+    """A note starts the instrument's pulse on a held step: the step keeps the pulse width, and
+    the pulse fires first on the next tick."""
     text = doc(phrase="[C4.i1, D4]", ins=SWEEP, head="tempo: 3\nhold: {pw: [step]}\n")
-    assert pulse(play(text, 6)) == [4087, 1, 11, 4087, 1, 11]
+    assert pulse(play(text, 6)) == [0, 1, 11, 11, 1, 11]
 
 
 def test_a_read_is_the_step_less_its_instrument_s_restart_lookahead():
@@ -92,16 +92,17 @@ def test_a_held_frequency_follows_its_note_and_a_recurrence_holds_its_value():
         assert freq(play(text, 4)) == expected
 
 
-def test_a_command_owns_its_cell_from_its_first_firing():
-    """A command held on its first tick leaves the frequency to the instrument's, itself held
-    before its first firing; once the command ends, the instrument's fires from φ 0."""
+def test_a_note_s_frequency_is_at_phi_minus_1_before_its_first_firing():
+    """A note's command and its instrument's frequency, held before their first firings, play
+    their values at φ -1; a command no note starts keeps the frequency."""
     text = doc(
-        phrase="[C4.i1!freq:x1, -!freq:none]",
+        phrase="[C4.i1!freq:x1, -!freq:none, D4!freq:x2!legato, -]",
         ins="{ctrl: [{ctrl: 65}, end], freq: F(N) + φ}",
-        x={"x1": "F(N) + 100"},
+        x={"x1": "F(N) + 100", "x2": "v + 7"},
         head="tempo: 2\nhold: {freq: [step]}\n",
     )
-    assert freq(play(text, 4)) == [F(48) - 1, F(48) + 100, F(48) - 1, F(48)]
+    c4, d4 = F(48), F(50)
+    assert freq(play(text, 6)) == [c4 + 100, c4 + 100, c4 - 1, c4, c4, c4 + 7]
 
 
 def test_a_shape_holds_its_tick():
