@@ -1,5 +1,6 @@
 """The tick machine: a canonical document played to the 25 SID registers' state per tick."""
 
+import ast
 import itertools
 from collections import defaultdict
 from dataclasses import dataclass
@@ -100,13 +101,13 @@ class _Compiler:
         self.memo: dict = {}
 
     def fn(self, expr: Expr, freq: bool = False):
-        ast = expr.ast
-        if freq and constant(ast) is not None:
-            ast = offset(constant(ast))
-        key = ("fn", ast)
+        node = expr.node
+        if freq and constant(node) is not None:
+            node = offset(constant(node))
+        key = ("fn", ast.dump(node))
         if key not in self.memo:
             try:
-                self.memo[key] = compile_expr(ast, self.table, self.doc.tables)
+                self.memo[key] = compile_expr(node, self.table, self.doc.tables)
             except ValueError as exc:
                 raise PlayError(str(exc)) from exc
         return self.memo[key]
@@ -184,7 +185,7 @@ class _Compiler:
         if value is None:
             return None
         if isinstance(value, int):
-            return self.fn(Expr(("int", value)), freq)
+            return self.fn(Expr(ast.Constant(value)), freq)
         return self.fn(self.named("expression", self.doc.expressions, value), freq)
 
     def event(self, event) -> CEvent:

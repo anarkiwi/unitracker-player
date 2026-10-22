@@ -160,7 +160,8 @@ cell's value before the firing, then φ + 1. A modulator starts with φ = 0 at t
 and fires that tick. A modulator that does not own its cell does not fire and keeps its φ. A
 cell with no modulator holds its value, but the frequency, which is `F(N)` then.
 
-Expressions are Python integers: `//` and `%` are floored, and 0 when the divisor is 0; a
+Expressions are compiled by `unitracker_grammar.expr` with `zero=True`. They are Python
+integers: `//` and `%` are floored, and 0 when the divisor is 0; a
 comparison is 1 or 0; `F(k)` is `unitracker_grammar.frequency(k, clock_hz)`, 0 below C0 and
 where the word overflows; `T[k]` is 0 outside the table, and a table the document does not
 define is refused.

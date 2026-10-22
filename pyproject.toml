@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unitracker-player"
-version = "0.1.4"
+version = "0.1.5"
 description = "Plays canonical unitracker documents to SID register state per tick"
 readme = "README.md"
 requires-python = ">=3.12"
