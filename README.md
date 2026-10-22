@@ -22,6 +22,7 @@ frames = play(text, ticks=3000)   # a looping song needs ticks
 song = load(text)                 # parse and compile once; play(song, ...) reuses it
 player = Player(song)
 regs = player.step()              # the 25 registers after one tick; None once the song ends
+player.regs                       # the register file the last tick wrote, one store per register
 ```
 
 `read(text)` returns the document as plain dataclasses. A text outside the grammar raises

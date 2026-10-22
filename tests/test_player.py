@@ -479,6 +479,17 @@ def test_the_player_steps_until_the_song_ends():
     assert regs[24] is None and player.step() is None
 
 
+def test_regs_is_the_register_file_each_tick_rewrites():
+    """`Player.regs` holds the last tick's registers; each step returns a copy of it."""
+    player = Player(load(doc()))
+    first = player.step()
+    assert first == player.regs and first is not player.regs
+    player.voices[0].ad = 0x5A
+    after = player.registers()
+    assert [i for i, (x, y) in enumerate(zip(first, after)) if x != y] == [5]
+    assert after[5] == player.regs[5] == 0x5A and first[5] == 9
+
+
 def _twice(text: str) -> str:
     return text.replace("      ins:\n", "      ins:\n        i1: {ad: 1}\n", 1)
 
