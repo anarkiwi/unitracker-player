@@ -13,6 +13,7 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
 | `tempo` | `n` ticks per step, or `[a, b]`, steps alternating `a` and `b` (default 6); 0 is refused |
+| `hold` | per cell, the events its modulators hold on (see [Holds](#holds)); none by default |
 | `tables` | the tables expressions read as `T[k]` |
 | `init` | one event per voice (see [Init](#init)); a count other than `voices` is refused |
 
@@ -161,15 +162,38 @@ A modulator `e` drives one cell: a voice's frequency (16 bits), a voice's pulse 
 or the one cutoff (11 bits). Each cell has a program modulator, set by program rows and
 instruments, and a command modulator, set by commands, which owns the cell while it is set. The
 owning modulator fires once per tick: `v' = e(v, φ, N)` wrapped to the cell's width, `v` the
-cell's value before the firing, then φ + 1. A modulator starts with φ = 0 at the tick it is set
-and fires that tick. A modulator that does not own its cell does not fire and keeps its φ. A
-cell with no modulator holds its value, but the frequency, which is `F(N)` then.
+cell's value before the firing, then φ + 1, but on its cell's hold ticks (see [Holds](#holds)).
+A modulator starts with φ = 0 at the tick it is set and fires that tick. A modulator that does
+not own its cell does not fire and keeps its φ. A cell with no modulator holds its value, but
+the frequency, which is `F(N)` then.
 
 Expressions are compiled by `unitracker_grammar.expr` with `zero=True`. They are Python
 integers: `//` and `%` are floored, and 0 when the divisor is 0; a
 comparison is 1 or 0; `F(k)` is `unitracker_grammar.frequency(k, clock_hz)`, 0 below C0 and
 where the word overflows; `T[k]` is 0 outside the table, and a table the document does not
 define is refused.
+
+## Holds
+
+`hold: {freq: [...], pw: [...], cut: [...]}` names, per cell, the events on which its owning
+modulator holds instead of firing: once it has fired, it repeats its last firing, with that
+firing's `v` and φ and the current `N`, and φ does not advance. A closed form of `N` and φ thus
+follows a change of `N`, and a modulator that reads `v` keeps its value. A modulator that has not
+fired yet fires on a hold tick, so every modulator fires on the tick it is set. A shape (`mod:`)
+holds its tick `t` the same way. A voice's events hold its frequency and pulse width modulators;
+the cutoff's are those of the voice that set its modulator.
+
+| event | the ticks of a voice it names |
+|---|---|
+| `step` | the first tick of each of its steps, the steps of an event's `*k` among them |
+| `last` | the first tick of the last step of each phrase it plays |
+| `read` | each step's first tick less the lookahead of the restart of the voice's instrument as of the step before (its first row's ticks before the note; 0 without a restart); none before the voice has an instrument |
+| `note` | the tick a note without `!legato` applies |
+| `legato` | the tick a note with `!legato` applies |
+| `row` | a tick a row of its control program that sets a key other than `ctrl` and `gate` applies (a restart's rows are not its control program's) |
+
+`e-k` is the tick `k` ticks before each tick of `e` (`row` takes no `-k`). The init row's events
+are none of these.
 
 ## Commands
 
@@ -205,7 +229,8 @@ that gave it), another command of its key, or its `none`.
 2. Programs: every voice's control slot, then every pulse slot, then every filter slot, each in
    voice order. A program started in a slot already visited this tick applies its rows from the
    next tick.
-3. Modulators: every voice's frequency, then every pulse width, then the cutoff.
+3. Modulators: every voice's frequency, then every pulse width, then the cutoff, each firing or
+   holding (a `row` hold is a control-program row this tick's step 2 applied).
 4. Registers.
 
 ## Registers

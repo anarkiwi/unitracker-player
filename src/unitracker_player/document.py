@@ -33,6 +33,8 @@ _VALUES = {
     "CTRLMASK",
     "NONE",
     "NAME",
+    "HOLD_CELL",
+    "HOLD_EVENT",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
@@ -108,7 +110,7 @@ class Play:
 
 @dataclass(frozen=True)
 class Header:
-    """The header lines, with their defaults."""
+    """The header lines, with their defaults; ``hold`` is ``{cell: ((event, k), ...)}``."""
 
     version: str
     meta: dict = field(default_factory=dict)
@@ -116,6 +118,7 @@ class Header:
     clock_hz: int | None = None
     voices: int = 3
     tempo: tuple = (6, 6)
+    hold: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -204,6 +207,7 @@ class ToDocument(Nodes):
             *clock,
             head.pop("voices", 3),
             head.pop("tempo", (6, 6)),
+            head.pop("hold", {}),
         )
         programs = {**defs["restart"], **defs["ctrl"], **defs["pw"], **defs["filter"]}
         return Document(
@@ -247,6 +251,15 @@ class ToDocument(Nodes):
     def tempo(children):
         values = _values(children)
         return ("tempo", (values[0], values[-1]))
+
+    @staticmethod
+    def hold(children):
+        return ("hold", dict(_values(children)))
+
+    @staticmethod
+    def hold_cell(children):
+        cell, *events = _values(children)
+        return cell, tuple((name, int(k or 0)) for name, _, k in (e.partition("-") for e in events))
 
     @staticmethod
     def tables(children):
