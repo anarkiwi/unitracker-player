@@ -101,7 +101,7 @@ def test_a_note_s_frequency_is_at_phi_minus_1_before_its_first_firing():
         x={"x1": "F(N) + 100", "x2": "v + 7"},
         head="tempo: 2\nhold: {freq: [step]}\n",
     )
-    c4, d4 = F(48), F(50)
+    c4 = F(48)
     assert freq(play(text, 6)) == [c4 + 100, c4 + 100, c4 - 1, c4, c4, c4 + 7]
 
 
