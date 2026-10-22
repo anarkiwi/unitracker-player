@@ -4,8 +4,11 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from lark import Token, Transformer, exceptions
+import ast
+
+from lark import Token, exceptions
 from unitracker_grammar import CanonicalError, parser
+from unitracker_grammar.expr import Nodes
 
 NONE = None
 _MISSING = object()
@@ -44,11 +47,9 @@ def note_number(name: str) -> int:
 
 @dataclass(frozen=True)
 class Expr:
-    """A modulator expression as a tree of tuples: ``('int', n)``, ``('v',)``, ``('phi',)``,
-    ``('N',)``, ``('F', a)``, ``('T', name, a)``, ``('abs', a)``, ``('min'|'max', a, b)``,
-    ``('cmp', op, a, b)``, ``('neg', a)`` or ``(op, a, b)`` for ``+ - * // %``."""
+    """A modulator expression as its node (:mod:`unitracker_grammar.expr`)."""
 
-    ast: tuple
+    node: ast.expr
 
 
 @dataclass(frozen=True)
@@ -175,9 +176,9 @@ def _chain(prefix, keys):
     return {f"{prefix}_{k}": _link(k) for k in keys}
 
 
-class ToDocument(Transformer):
+class ToDocument(Nodes):
     """The parse tree of ``canonical.lark`` to a Document; each method is the grammar rule of
-    its name."""
+    its name, and an expression's rules are :class:`Nodes`'."""
 
     # pylint: disable=too-many-public-methods,missing-function-docstring
 
@@ -410,34 +411,8 @@ class ToDocument(Transformer):
     def keep_filter(children):
         return bool(children)
 
-    @staticmethod
-    def fexpr(children):
-        return Expr(_values(children)[0])
-
-    @staticmethod
-    def expr(children):
-        return _fold(children)
-
-    @staticmethod
-    def term(children):
-        return _fold(children)
-
-    @staticmethod
-    def factor(children):
-        values, words = _values(children), _words(children)
-        if not words:
-            if len(values) == 2:
-                return ("T", *values)
-            return ("int", values[0]) if isinstance(values[0], int) else values[0]
-        head = words[0]
-        if head in ("v", "φ", "N"):
-            return ({"v": "v", "φ": "phi", "N": "N"}[head],)
-        if head == "-":
-            (inner,) = values
-            return ("int", -inner[1]) if inner[0] == "int" else ("neg", inner)
-        if head in ("F(", "abs(", "min(", "max("):
-            return (head[:-1], *values)
-        return ("cmp", words[0], values[0], values[1])
+    def fexpr(self, children):
+        return Expr(super().fexpr(children))
 
 
 for _name, _method in {
@@ -448,17 +423,6 @@ for _name, _method in {
     **_chain("cmd", "run pw ad sr ctrl resfilt mode vol cut tempo vtempo freq".split()),
 }.items():
     setattr(ToDocument, _name, _method)
-
-
-def _fold(children) -> tuple:
-    """A left-associative chain of operands and operator tokens as nested binary tuples."""
-    out, op = None, None
-    for c in children:
-        if isinstance(c, Token):
-            op = c.strip()
-        else:
-            out = c if out is None else (op, out, c)
-    return out
 
 
 def _modulation(kind: str, value):
