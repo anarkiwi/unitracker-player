@@ -364,11 +364,13 @@ class _Voice:
 
 class Player:
     """Plays a Song one tick at a time; ``step()`` returns the registers at the end of the
-    tick, or None once the song has ended."""
+    tick, or None once the song has ended. ``regs`` is the register file the last tick wrote,
+    each register by its own statement, so a line tracer sees one store per register."""
 
     def __init__(self, song: Song):
         self.song = song
         self.tick = 0
+        self.regs = [0] * REGISTERS
         self.voices = [_Voice() for _ in range(song.voices)]
         self.cut = self.res = self.route = self.mode = self.vol = 0
         self.cut_prog = self.cut_cmd = None
@@ -436,26 +438,22 @@ class Player:
         return self.registers()
 
     def registers(self) -> list:
-        """The 25 register values."""
-        regs = [0] * REGISTERS
+        """The 25 register values, written to ``regs``."""
+        regs = self.regs
         for v, voice in enumerate(self.voices):
-            ctrl = ((voice.ctrl ^ voice.mask) & 0xFE) | (voice.ctrl & voice.gate & 1)
-            regs[7 * v : 7 * v + 7] = [
-                voice.freq & 0xFF,
-                voice.freq >> 8,
-                voice.pw & 0xFF,
-                voice.pw >> 8,
-                ctrl,
-                voice.ad,
-                voice.sr,
-            ]
-        regs[21:25] = [
-            self.cut & 7,
-            self.cut >> 3,
-            self.res << 4 | self.route,
-            self.mode | self.vol,
-        ]
-        return regs
+            at = 7 * v
+            regs[at] = voice.freq & 0xFF
+            regs[at + 1] = voice.freq >> 8
+            regs[at + 2] = voice.pw & 0xFF
+            regs[at + 3] = voice.pw >> 8
+            regs[at + 4] = ((voice.ctrl ^ voice.mask) & 0xFE) | (voice.ctrl & voice.gate & 1)
+            regs[at + 5] = voice.ad
+            regs[at + 6] = voice.sr
+        regs[21] = self.cut & 7
+        regs[22] = self.cut >> 3
+        regs[23] = self.res << 4 | self.route
+        regs[24] = self.mode | self.vol
+        return list(regs)
 
     def _start(self, v: int, kind: int, prog: CProgram | None, t: int):
         running = prog is not None and bool(prog.rows)
