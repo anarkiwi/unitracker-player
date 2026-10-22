@@ -78,6 +78,8 @@ class Song:
     loop: int | None
     lookahead: int
     table: object
+    hold: dict
+    horizon: int
 
 
 def _tempo(value, where: str) -> tuple:
@@ -257,6 +259,8 @@ def compile_document(doc: Document) -> Song:
         raise PlayError(f"song: loop row {doc.loop} out of range")
     instruments = [v for k, v in comp.memo.items() if k[0] == "ins"]
     lookahead = max((r[0][1] for i in instruments if (r := i.restart)), default=0)
+    hold = {cell: frozenset(events) for cell, events in head.hold.items()}
+    earliest = max((k for events in hold.values() for _, k in events), default=0)
     return Song(
         head.voices,
         _tempo(head.tempo, "tempo"),
@@ -266,6 +270,8 @@ def compile_document(doc: Document) -> Song:
         doc.loop,
         lookahead,
         table,
+        hold,
+        lookahead + earliest,
     )
 
 
@@ -314,8 +320,8 @@ class _Sequencer:
             self.end = t
 
     def advance(self, limit: int) -> list:
-        """The events whose steps begin by tick ``limit``, as ``(tick, voice, event,
-        transpose)``."""
+        """The steps that begin by tick ``limit``, as ``(tick, voice, event, transpose, last)``:
+        ``event`` None for a step an event's ``*k`` times, ``last`` for a phrase's last step."""
         out = []
         while self.end is None:
             live = [v for v in range(self.voices) if not self.stopped[v]]
@@ -330,14 +336,16 @@ class _Sequencer:
                     break
                 due = [v for v in due if not self.stopped[v]]
             for v in due:
+                event = None
                 if self.rest[v]:
                     self.rest[v] -= 1
-                    continue
-                event = self.phrase[v][self.pos[v]]
-                self.pos[v] += 1
-                self.rest[v] = event.steps - 1
-                out.append((t, v, event, self.transpose[v]))
-                self._retime(v, event)
+                else:
+                    event = self.phrase[v][self.pos[v]]
+                    self.pos[v] += 1
+                    self.rest[v] = event.steps - 1
+                    self._retime(v, event)
+                last = not self.rest[v] and self.pos[v] == len(self.phrase[v])
+                out.append((t, v, event, self.transpose[v], last))
             for v in due:
                 self.next[v] = t + self.tempo[v][self.phase[v]]
                 self.phase[v] ^= 1
@@ -363,7 +371,7 @@ class _Voice:
         return None if self.note is None else self.note + self.relative
 
 
-class Player:
+class Player:  # pylint: disable=too-many-instance-attributes
     """Plays a Song one tick at a time; ``step()`` returns the registers at the end of the
     tick, or None once the song has ended. ``regs`` is the register file the last tick wrote,
     each register by its own statement, so a line tracer sees one store per register."""
@@ -379,6 +387,8 @@ class Player:
         self._ins = [None] * song.voices
         self._events = defaultdict(list)
         self._lookahead = defaultdict(list)
+        self._held = defaultdict(set)
+        self._noted = [None] * song.voices
         self._init = [i for v, e in enumerate(song.init) for _, i in self._schedule(0, v, e, 0)]
 
     @property
@@ -416,12 +426,35 @@ class Player:
             if has
         ]
 
+    def _hold_step(self, t: int, v: int, event: CEvent | None, last: bool):
+        """The hold ticks of voice ``v``'s step at tick ``t``: the tick of each event it is, and
+        of its read, by the restart of the voice's instrument before the step's event."""
+        at = {"step": t, "last": t if last else None, "read": None}
+        if event is not None and isinstance(event.note, int):
+            at["legato" if event.legato else "note"] = t
+        ins = self._ins[v]
+        if ins is not None:
+            at["read"] = t - (ins.restart[0][1] if ins.restart else 0)
+        for cell, events in self.song.hold.items():
+            self._held[v, cell].update(at[e] - k for e, k in events if at.get(e) is not None)
+
+    def _holds(self, v: int, cell: str, t: int) -> bool:
+        """Whether tick ``t`` is one of voice ``v``'s hold events of ``cell``."""
+        rowed = ("row", 0) in self.song.hold.get(cell, ()) and t in self._held[v, "row"]
+        return rowed or t in self._held[v, cell]
+
+    def _advance(self, t: int):
+        """Schedules the steps that begin by the song's horizon past tick ``t``."""
+        for tick, v, event, transpose, last in self._seq.advance(t + self.song.horizon):
+            self._hold_step(tick, v, event, last)
+            if event is not None:
+                for at, item in self._schedule(tick, v, event, transpose):
+                    self._events[at].append(item)
+
     def step(self) -> list | None:
         """Plays one tick."""
         t = self.tick
-        for tick, v, event, transpose in self._seq.advance(t + self.song.lookahead):
-            for at, item in self._schedule(tick, v, event, transpose):
-                self._events[at].append(item)
+        self._advance(t)
         if self.finished:
             return None
         if t == 0:
@@ -481,7 +514,9 @@ class Player:
                 raise PlayError(f"voice {v + 1}: a program loops in no time at tick {t}")
             seen.add((id(prog), index))
             _, hold, ops = prog.rows[index]
-            self._apply(v, ops, t, False)
+            self._apply(v, ops, t, False, kind == CONTROL)
+            if kind == CONTROL and any(key not in ("ctrl", "gate") for key, _ in ops):
+                self._held[v, "row"].add(t)
             if slots[kind] is not slot or slot[0] is None:
                 continue
             index += 1
@@ -495,8 +530,11 @@ class Player:
     def _row(self, v: int, row: tuple, t: int, first: bool = False):
         self._apply(v, row[2], t, first)
 
-    def _apply(self, v: int, ops: tuple, t: int, first: bool):  # pylint: disable=too-many-branches
-        """A row's keys, in vocabulary order; ``first`` marks a restart's first-tick row."""
+    # pylint: disable-next=too-many-branches,too-many-arguments,too-many-positional-arguments
+    def _apply(self, v: int, ops: tuple, t: int, first: bool, ctrl: bool = False):
+        """A row's keys, in vocabulary order; ``first`` marks a restart's first-tick row,
+        ``ctrl`` a control program's row, whose modulators hold on the ``ctrl.`` cells."""
+        held = "ctrl." if ctrl else ""
         voice = self.voices[v]
         for key, value in ops:
             if key == "ctrl":
@@ -520,11 +558,11 @@ class Player:
                 if value is None:
                     self._stop_pulse(v)
                 else:
-                    voice.pw_prog = [value, 0]
+                    voice.pw_prog = [value, 0, held + "pw", None, None]
             elif key == "cut":
-                self.cut_prog = [value, 0, v]
+                self.cut_prog = [value, 0, v, held + "cut", None, None]
             elif key == "freq":
-                voice.freq_prog = [value, 0]
+                voice.freq_prog = [value, 0, held + "freq", self._before(v, t), None]
             elif key == "run":
                 self._start(v, value[0], value[1], t)
             elif key == "filter":
@@ -559,6 +597,7 @@ class Player:
             voice.note = event.note + transpose
             if not event.legato:
                 voice.relative, voice.absolute, voice.gate = 0, None, 1
+                self._noted[v] = t
                 if ins is not None:
                     self._instrument(v, ins, event, t)
         elif event.note is not None and part != "ops":
@@ -578,7 +617,7 @@ class Player:
             self._start(v, PULSE, ins.pw, t)
         if ins.filter is not None and not event.keep_filter:
             self._start(v, FILTER, ins.filter, t)
-        voice.freq_prog = None if ins.freq is None else [ins.freq, 0]
+        voice.freq_prog = None if ins.freq is None else [ins.freq, 0, "freq", -1, None]
         self._arm_osc(voice, ins.fn, ins.p0)
         voice.freq_cmd = voice.pw_cmd = None
         if self.cut_cmd and self.cut_cmd[2] == v:
@@ -592,7 +631,7 @@ class Player:
             else:
                 self._start(v, value[0], value[1], t)
         elif key == "pw":
-            voice.pw_cmd = None if value is None else [value, 0]
+            voice.pw_cmd = None if value is None else [value, 0, "pw", None, None]
             if value is None:
                 self._stop_pulse(v)
         elif key == "filter":
@@ -606,9 +645,9 @@ class Player:
         elif key == "resfilt":
             self.res, self.route = value[0] & 15, value[1] & 15
         elif key == "cut":
-            self.cut_cmd = [value, 0, v]
+            self.cut_cmd = [value, 0, v, "cut", None, None]
         elif key == "freq":
-            voice.freq_cmd = None if value is None else [value, 0]
+            voice.freq_cmd = None if value is None else [value, 0, "freq", self._before(v, t), None]
             if value is not None:
                 voice.osc = None
         elif key == "set":
@@ -622,34 +661,59 @@ class Player:
         if fn is None:
             voice.osc = None
             return
-        voice.osc = [fn, dict(p0) if p0 else {}, 0]
+        voice.osc = [fn, dict(p0) if p0 else {}, 0, "freq", -1, None]
+
+    def _owner(self, t: int, cmd: list | None, prog: list | None, v: int | None = None) -> tuple:
+        """``(modulator, held)`` of the command, else the program modulator, held by voice
+        ``v`` (the cutoff's: the voice that set it); ``(None, False)`` for neither."""
+        mod = cmd or prog
+        if mod is None:
+            return None, False
+        return mod, self._holds(mod[2] if v is None else v, mod[-3], t)
+
+    def _before(self, v: int, t: int) -> int | None:
+        """A frequency modulator's φ before its first firing: -1 for one set on the tick a note
+        starts, else None (the frequency keeps its value)."""
+        return -1 if self._noted[v] == t else None
 
     def _fire(self):
+        t = self.tick
         for vix, voice in enumerate(self.voices):
+            n = voice.sounding
             if voice.osc is not None:
-                n = voice.sounding
                 base = self.song.table(n) if n is not None else 0
-                fn, bag, tick = voice.osc
+                fn, bag = voice.osc[0], voice.osc[1]
                 base = (base + bag.get("detune", 0) * vix) & FREQ_MASK
-                voice.freq = fn(bag, voice.freq, tick, base) & FREQ_MASK
-                voice.osc[2] += 1
+                if at := _firing(voice.osc, 2, self._holds(vix, "freq", t), voice.freq):
+                    voice.freq = fn(bag, *at, base) & FREQ_MASK
                 continue
-            mod, n = voice.freq_cmd or voice.freq_prog, voice.sounding
-            if mod:
-                voice.freq = mod[0](voice.freq, mod[1], n or 0) & FREQ_MASK
-                mod[1] += 1
-            elif n is not None:
-                voice.freq = self.song.table(n)
-        for voice in self.voices:
-            mod = voice.pw_cmd or voice.pw_prog
-            if mod:
-                voice.pw = mod[0](voice.pw, mod[1], voice.sounding or 0) & PW_MASK
-                mod[1] += 1
-        mod = self.cut_cmd or self.cut_prog
-        if mod:
-            n = self.voices[mod[2]].sounding
-            self.cut = mod[0](self.cut, mod[1], n or 0) & CUT_MASK
-            mod[1] += 1
+            mod, held = self._owner(t, voice.freq_cmd, voice.freq_prog, vix)
+            if mod is None:
+                if n is not None:
+                    voice.freq = self.song.table(n)
+            elif at := _firing(mod, 1, held, voice.freq):
+                voice.freq = mod[0](*at, n or 0) & FREQ_MASK
+        for vix, voice in enumerate(self.voices):
+            mod, held = self._owner(t, voice.pw_cmd, voice.pw_prog, vix)
+            if mod and (at := _firing(mod, 1, held, voice.pw)):
+                voice.pw = mod[0](*at, voice.sounding or 0) & PW_MASK
+        mod, held = self._owner(t, self.cut_cmd, self.cut_prog)
+        if mod and (at := _firing(mod, 1, held, self.cut)):
+            self.cut = mod[0](*at, self.voices[mod[2]].sounding or 0) & CUT_MASK
+        for ticks in self._held.values():
+            ticks.discard(t)
+
+
+def _firing(mod: list, at: int, held: bool, v: int) -> tuple | None:
+    """The ``(v, φ)`` modulator ``mod`` (its φ at ``at``, then its key, its φ before its first
+    firing and its last firing's ``(v, φ)``) is evaluated at with the cell's value ``v``, or
+    None to keep it: on a hold tick its last firing's, before its first ``(v, φ before)`` or
+    None, φ not advancing; else ``v`` and its φ, which then advances."""
+    if held:
+        return mod[-1] or (None if mod[-2] is None else (v, mod[-2]))
+    mod[-1] = (v, mod[at])
+    mod[at] += 1
+    return mod[-1]
 
 
 def play(source, ticks: int | None = None, progress: bool = False) -> np.ndarray:

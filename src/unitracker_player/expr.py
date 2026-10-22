@@ -24,9 +24,11 @@ def constant(node: ast.expr) -> int | None:
 
 def compile_expr(node: ast.expr, table: Callable[[int], int], tables: dict) -> Fn:
     """``node`` as a callable of ``(v, phi, n)``, reading ``F`` from ``table`` and ``T[k]`` from
-    ``tables``."""
+    ``tables``; the callable's ``node`` is ``node``."""
     namespace = {"_F": table, "_T": {name: indexed(values) for name, values in tables.items()}}
-    return _compiled(node, namespace, zero=True)
+    fn = _compiled(node, namespace, zero=True)
+    fn.node = node
+    return fn
 
 
 def offset(n: int) -> ast.expr:
