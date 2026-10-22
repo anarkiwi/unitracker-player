@@ -1,21 +1,24 @@
 """Holds: a modulator repeats its last firing on its cell's hold events (docs/semantics.md)."""
 
+import ast
+
 import pytest
 from song import cutoff, doc, freq, pulse
 from unitracker_grammar import frequency as F
 
-from unitracker_player import play
+from unitracker_player import Player, load, play
 
 SWEEP = "{ctrl: [{ctrl: 65}, end], pw: 10*φ + 1}"
 
 
 def sweep(held: set, ticks: int, start: int = 0) -> list:
-    """``10*φ + 1`` from ``start``, φ advancing on every tick but ``held``, 0 before."""
+    """``10*φ + 1`` from ``start``, φ advancing on every tick but ``held``, 0 before; a held
+    tick before the first firing shows its value at φ -1."""
     out, phi, last = [], 0, 0
     for t in range(ticks):
         if t >= start:
-            if t in held and t > start:
-                out.append(last)
+            if t in held:
+                out.append(last if phi else -9 & 0xFFF)
                 continue
             last = 10 * phi + 1
             phi += 1
@@ -26,12 +29,12 @@ def sweep(held: set, ticks: int, start: int = 0) -> list:
 @pytest.mark.parametrize(
     "hold, held",
     [
-        ("step", {3, 6, 9}),
+        ("step", {0, 3, 6, 9}),
         ("step-1", {2, 5, 8}),
         ("step-2", {1, 4, 7}),
         ("last", {9}),
         ("last-1", {8}),
-        ("note", {9}),
+        ("note", {0, 9}),
         ("note-1", {8}),
         ("legato", {3}),
     ],
@@ -45,10 +48,11 @@ def test_a_pulse_holds_on_its_events(hold, held):
     assert pulse(play(text, 12)) == sweep(held, 12)
 
 
-def test_a_note_s_modulator_fires_on_the_tick_it_starts():
-    """A note starts the instrument's pulse on a held tick: it fires, φ from 0."""
-    text = doc(phrase="[C4.i1, D4]", ins=SWEEP, head="tempo: 2\nhold: {pw: [note, step]}\n")
-    assert pulse(play(text, 4)) == [1, 11, 1, 11]
+def test_a_modulator_held_on_the_tick_it_starts_fires_first_on_its_next():
+    """A note starts the instrument's pulse on a held step: the step shows it at φ -1, and it
+    fires first on the next tick."""
+    text = doc(phrase="[C4.i1, D4]", ins=SWEEP, head="tempo: 3\nhold: {pw: [step]}\n")
+    assert pulse(play(text, 6)) == [4087, 1, 11, 4087, 1, 11]
 
 
 def test_a_read_is_the_step_less_its_instrument_s_restart_lookahead():
@@ -88,15 +92,16 @@ def test_a_held_frequency_follows_its_note_and_a_recurrence_holds_its_value():
         assert freq(play(text, 4)) == expected
 
 
-def test_a_modulator_that_has_not_fired_fires_on_a_hold_tick():
-    """The instrument's frequency waits under the command; its first firing is on a held tick."""
+def test_a_command_owns_its_cell_from_its_first_firing():
+    """A command held on its first tick leaves the frequency to the instrument's, itself held
+    before its first firing; once the command ends, the instrument's fires from φ 0."""
     text = doc(
         phrase="[C4.i1!freq:x1, -!freq:none]",
         ins="{ctrl: [{ctrl: 65}, end], freq: F(N) + φ}",
         x={"x1": "F(N) + 100"},
         head="tempo: 2\nhold: {freq: [step]}\n",
     )
-    assert freq(play(text, 4)) == [F(48) + 100, F(48) + 100, F(48), F(48) + 1]
+    assert freq(play(text, 4)) == [F(48) - 1, F(48) + 100, F(48) - 1, F(48)]
 
 
 def test_a_shape_holds_its_tick():
@@ -107,7 +112,7 @@ def test_a_shape_holds_its_tick():
         head="tempo: 2\nhold: {freq: [step]}\n",
     )
     base = F(48)
-    assert freq(play(text, 4)) == [base, base + 5, base + 5, base + 10]
+    assert freq(play(text, 4)) == [base, base, base, base + 5]
 
 
 def test_the_cutoff_holds_on_the_events_of_the_voice_that_set_it():
@@ -119,9 +124,26 @@ def test_the_cutoff_holds_on_the_events_of_the_voice_that_set_it():
         rows=("[p1, p2]",),
         head=head,
     )
-    assert cutoff(play(text, 8)) == [8, 16, 16, 24, 24, 32, 32, 40]
+    assert cutoff(play(text, 8)) == [0, 8, 8, 16, 16, 24, 24, 32]
 
 
 def test_no_hold_line_holds_nothing():
     text = doc(phrase="[C4.i1, D4!legato, -]", ins=SWEEP, head="tempo: 3\n")
     assert pulse(play(text, 9)) == sweep(set(), 9)
+
+
+def test_a_compiled_expression_carries_its_node():
+    song = load(doc(ins="{ctrl: [{ctrl: 65}, end], pw: 10*φ + 1}"))
+    player = Player(song)
+    player.step()
+    assert ast.unparse(player.voices[0].pw_prog[0].node) == "10 * φ + 1"
+
+
+@pytest.mark.parametrize(
+    "hold, expected", [("freq", [0, 1, 2, 3, 4]), ("ctrl.freq", [-1, -1, -1, 0, 1])]
+)
+def test_a_control_row_s_modulator_holds_on_the_ctrl_cell(hold, expected):
+    """A control row's frequency holds on ``ctrl.freq``'s events alone; its rows hold it."""
+    ins = "{ctrl: [{ctrl: 65, freq: F(N) + φ}, {note: +0}, {note: +0}, end]}"
+    text = doc(phrase="[C4.i1, -*3]", ins=ins, head=f"tempo: 4\nhold: {{{hold}: [row]}}\n")
+    assert [f - F(48) for f in freq(play(text, 5))] == expected

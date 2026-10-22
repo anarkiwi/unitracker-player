@@ -160,10 +160,12 @@ Values wider than their field keep their low bits.
 
 A modulator `e` drives one cell: a voice's frequency (16 bits), a voice's pulse width (12 bits)
 or the one cutoff (11 bits). Each cell has a program modulator, set by program rows and
-instruments, and a command modulator, set by commands, which owns the cell while it is set. The
+instruments, and a command modulator, set by commands, which owns the cell while it is set
+(from its first firing; see [Holds](#holds)). The
 owning modulator fires once per tick: `v' = e(v, φ, N)` wrapped to the cell's width, `v` the
 cell's value before the firing, then φ + 1, but on its cell's hold ticks (see [Holds](#holds)).
-A modulator starts with φ = 0 at the tick it is set and fires that tick. A modulator that does
+A modulator starts with φ = 0 at the tick it is set and fires that tick,
+unless it holds. A modulator that does
 not own its cell does not fire and keeps its φ. A cell with no modulator holds its value, but
 the frequency, which is `F(N)` then.
 
@@ -176,12 +178,15 @@ define is refused.
 ## Holds
 
 `hold: {freq: [...], pw: [...], cut: [...]}` names, per cell, the events on which its owning
-modulator holds instead of firing: once it has fired, it repeats its last firing, with that
-firing's `v` and φ and the current `N`, and φ does not advance. A closed form of `N` and φ thus
-follows a change of `N`, and a modulator that reads `v` keeps its value. A modulator that has not
-fired yet fires on a hold tick, so every modulator fires on the tick it is set. A shape (`mod:`)
-holds its tick `t` the same way. A voice's events hold its frequency and pulse width modulators;
-the cutoff's are those of the voice that set its modulator.
+modulator holds instead of firing; `ctrl.freq`, `ctrl.pw` and `ctrl.cut` name them for the
+modulators a control program's row sets, and `freq`, `pw` and `cut` for every other. On a hold
+tick φ does not advance and the cell takes the modulator's last firing again, with that firing's
+`v` and φ and the current `N`, or, before its first firing, its value at φ = -1 with the
+cell's `v`. A closed form of `N` and φ thus follows a change of
+`N`, and a modulator that reads `v` keeps its value. A command owns its cell only from its first
+firing: held before it, its cell's program modulator, or no modulator, drives the cell. A shape
+(`mod:`) holds its tick `t` as a `freq` modulator. A voice's events hold its frequency and pulse
+width modulators; the cutoff's are those of the voice that set its modulator.
 
 | event | the ticks of a voice it names |
 |---|---|

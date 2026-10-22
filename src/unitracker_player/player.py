@@ -513,7 +513,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
                 raise PlayError(f"voice {v + 1}: a program loops in no time at tick {t}")
             seen.add((id(prog), index))
             _, hold, ops = prog.rows[index]
-            self._apply(v, ops, t, False)
+            self._apply(v, ops, t, False, kind == CONTROL)
             if kind == CONTROL and any(key not in ("ctrl", "gate") for key, _ in ops):
                 self._held[v, "row"].add(t)
             if slots[kind] is not slot or slot[0] is None:
@@ -529,8 +529,11 @@ class Player:  # pylint: disable=too-many-instance-attributes
     def _row(self, v: int, row: tuple, t: int, first: bool = False):
         self._apply(v, row[2], t, first)
 
-    def _apply(self, v: int, ops: tuple, t: int, first: bool):  # pylint: disable=too-many-branches
-        """A row's keys, in vocabulary order; ``first`` marks a restart's first-tick row."""
+    # pylint: disable-next=too-many-branches,too-many-arguments,too-many-positional-arguments
+    def _apply(self, v: int, ops: tuple, t: int, first: bool, ctrl: bool = False):
+        """A row's keys, in vocabulary order; ``first`` marks a restart's first-tick row,
+        ``ctrl`` a control program's row, whose modulators hold on the ``ctrl.`` cells."""
+        held = "ctrl." if ctrl else ""
         voice = self.voices[v]
         for key, value in ops:
             if key == "ctrl":
@@ -554,11 +557,11 @@ class Player:  # pylint: disable=too-many-instance-attributes
                 if value is None:
                     self._stop_pulse(v)
                 else:
-                    voice.pw_prog = [value, 0, None]
+                    voice.pw_prog = [value, 0, held + "pw", None]
             elif key == "cut":
-                self.cut_prog = [value, 0, v, None]
+                self.cut_prog = [value, 0, v, held + "cut", None]
             elif key == "freq":
-                voice.freq_prog = [value, 0, None]
+                voice.freq_prog = [value, 0, held + "freq", None]
             elif key == "run":
                 self._start(v, value[0], value[1], t)
             elif key == "filter":
@@ -612,7 +615,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
             self._start(v, PULSE, ins.pw, t)
         if ins.filter is not None and not event.keep_filter:
             self._start(v, FILTER, ins.filter, t)
-        voice.freq_prog = None if ins.freq is None else [ins.freq, 0, None]
+        voice.freq_prog = None if ins.freq is None else [ins.freq, 0, "freq", None]
         self._arm_osc(voice, ins.fn, ins.p0)
         voice.freq_cmd = voice.pw_cmd = None
         if self.cut_cmd and self.cut_cmd[2] == v:
@@ -626,7 +629,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
             else:
                 self._start(v, value[0], value[1], t)
         elif key == "pw":
-            voice.pw_cmd = None if value is None else [value, 0, None]
+            voice.pw_cmd = None if value is None else [value, 0, "pw", None]
             if value is None:
                 self._stop_pulse(v)
         elif key == "filter":
@@ -640,9 +643,9 @@ class Player:  # pylint: disable=too-many-instance-attributes
         elif key == "resfilt":
             self.res, self.route = value[0] & 15, value[1] & 15
         elif key == "cut":
-            self.cut_cmd = [value, 0, v, None]
+            self.cut_cmd = [value, 0, v, "cut", None]
         elif key == "freq":
-            voice.freq_cmd = None if value is None else [value, 0, None]
+            voice.freq_cmd = None if value is None else [value, 0, "freq", None]
             if value is not None:
                 voice.osc = None
         elif key == "set":
@@ -656,33 +659,44 @@ class Player:  # pylint: disable=too-many-instance-attributes
         if fn is None:
             voice.osc = None
             return
-        voice.osc = [fn, dict(p0) if p0 else {}, 0, None]
+        voice.osc = [fn, dict(p0) if p0 else {}, 0, "freq", None]
+
+    def _owner(self, t: int, cmd: list | None, prog: list | None, v: int | None = None) -> tuple:
+        """``(modulator, held)`` of the command or program modulator that owns its cell this
+        tick, held by voice ``v`` (the cutoff's: the voice that set it): the command only once
+        it has fired or fires now; ``(None, False)`` for neither."""
+        for mod in (cmd, prog):
+            if mod:
+                held = self._holds(mod[2] if v is None else v, mod[-2], t)
+                if mod is prog or not held or mod[-1] is not None:
+                    return mod, held
+        return None, False
 
     def _fire(self):
         t = self.tick
         for vix, voice in enumerate(self.voices):
-            held, n = self._holds(vix, "freq", t), voice.sounding
+            n = voice.sounding
             if voice.osc is not None:
                 base = self.song.table(n) if n is not None else 0
                 fn, bag = voice.osc[0], voice.osc[1]
                 base = (base + bag.get("detune", 0) * vix) & FREQ_MASK
-                w, k = _firing(voice.osc, 2, held, voice.freq)
+                w, k = _firing(voice.osc, 2, self._holds(vix, "freq", t), voice.freq)
                 voice.freq = fn(bag, w, k, base) & FREQ_MASK
                 continue
-            mod = voice.freq_cmd or voice.freq_prog
+            mod, held = self._owner(t, voice.freq_cmd, voice.freq_prog, vix)
             if mod:
                 w, k = _firing(mod, 1, held, voice.freq)
                 voice.freq = mod[0](w, k, n or 0) & FREQ_MASK
             elif n is not None:
                 voice.freq = self.song.table(n)
         for vix, voice in enumerate(self.voices):
-            mod = voice.pw_cmd or voice.pw_prog
+            mod, held = self._owner(t, voice.pw_cmd, voice.pw_prog, vix)
             if mod:
-                w, k = _firing(mod, 1, self._holds(vix, "pw", t), voice.pw)
+                w, k = _firing(mod, 1, held, voice.pw)
                 voice.pw = mod[0](w, k, voice.sounding or 0) & PW_MASK
-        mod = self.cut_cmd or self.cut_prog
+        mod, held = self._owner(t, self.cut_cmd, self.cut_prog)
         if mod:
-            w, k = _firing(mod, 1, self._holds(mod[2], "cut", t), self.cut)
+            w, k = _firing(mod, 1, held, self.cut)
             self.cut = mod[0](w, k, self.voices[mod[2]].sounding or 0) & CUT_MASK
         for ticks in self._held.values():
             ticks.discard(t)
@@ -690,11 +704,12 @@ class Player:  # pylint: disable=too-many-instance-attributes
 
 def _firing(mod: list, at: int, held: bool, v: int) -> tuple:
     """The ``(v, φ)`` modulator ``mod`` (its φ at ``at``, its last firing's ``(v, φ)`` last)
-    fires at with the cell's value ``v``: on a hold tick, once it has fired, its last firing's,
-    φ not advancing; else ``v`` and its φ, which then advances."""
-    if not held or mod[-1] is None:
-        mod[-1] = (v, mod[at])
-        mod[at] += 1
+    is evaluated at with the cell's value ``v``: on a hold tick its last firing's, or before its
+    first ``(v, -1)``, φ not advancing; else ``v`` and its φ, which then advances."""
+    if held:
+        return mod[-1] or (v, -1)
+    mod[-1] = (v, mod[at])
+    mod[at] += 1
     return mod[-1]
 
 
