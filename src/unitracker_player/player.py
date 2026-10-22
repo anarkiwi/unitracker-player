@@ -16,6 +16,7 @@ from unitracker_player.modulation import SHAPES
 VERSION = "1.20"
 MAX_VOICES = 3
 REGISTERS = 25
+ENVELOPE = ("ad", "sr")
 CONTROL, PULSE, FILTER = range(3)
 FREQ_MASK, PW_MASK, CUT_MASK = 0xFFFF, 0xFFF, 0x7FF
 
@@ -398,6 +399,10 @@ class Player:
             return [(t, (v, event, transpose, ins, None, None))]
         *ahead, (last, _) = ins.restart
         if isinstance(event.note, int):
+            if ahead:
+                wait, hold, ops = ahead[-1][0]
+                envelope = tuple(op for op in event.ops if op[0] in ENVELOPE)
+                ahead[-1] = ((wait, hold, ops + envelope), ahead[-1][1])
             for row, before in ahead:
                 if t - before >= 0:
                     self._lookahead[t - before].append((v, row))

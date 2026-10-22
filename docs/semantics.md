@@ -106,14 +106,19 @@ note, the programs, the modulators and the commands are untouched, and no restar
 A voice's restart program is the `restart` of its instrument as of the event (the event's
 `.iN`, else the voice's last). It is anchored to every event of the voice without `!legato`
 but a `-` without commands: its last row falls on the event's tick and each earlier row `i`
-`hold_i + wait_(i+1)` ticks before row `i + 1`. A note runs the rows: each applies with its row
-meaning at its tick, before the voice's events of that tick, even before the voice's previous
-event; a row that falls before tick 0 is dropped; the last applies before the note and with a
-`ctrl` sets the gate on. The note and its commands stay on its tick. An `off`, `on` or `-`
-event runs no row: the rows before the last are its lookahead, and it applies its gate at the
-first lookahead row's tick and its commands but tempo ones at the last lookahead row's, each
-at tick 0 if that is earlier, as the voice's event of that tick; with no lookahead row it
-stays on its tick. The restart's ending is ignored.
+`hold_i + wait_(i+1)` ticks before row `i + 1`. The rows before the last are its lookahead.
+
+A note runs the rows: each applies with its row meaning at its tick, before the voice's events
+of that tick, even before the voice's previous event; a row that falls before tick 0 is
+dropped; the last applies before the note and with a `ctrl` sets the gate on. The note and its
+commands stay on its tick. Its `!ad` and `!sr` also apply with the last lookahead row, the
+note's first-tick row: at that row's tick, right after it, so on that tick they win over the
+row's own `ad` and `sr`; not where that row is dropped.
+
+An `off`, `on` or `-` event runs no row: it applies its gate at the first lookahead row's tick
+and its commands but tempo ones at the last lookahead row's, each at tick 0 if that is earlier,
+as the voice's event of that tick; with no lookahead row it stays on its tick. The restart's
+ending is ignored.
 
 ## Programs
 
