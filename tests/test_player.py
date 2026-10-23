@@ -76,6 +76,15 @@ def test_a_filter_program_drives_the_shared_filter(voice):
     assert reg(frames, 0x18) == [16 | 15] * 24
 
 
+def test_a_filter_program_a_voice_starts_stops_the_other_voices():
+    """The filter runs one program: voice 2's note stops voice 1's, whose second row never
+    applies."""
+    ins = {"i1": "{filter: [{hold: 11, res: 1}, {res: 2}, end]}", "i2": "{filter: [{res: 5}, end]}"}
+    phrases = {"p1": "[C4.i1, -*3]", "p2": "[-, C4.i2, -*2]"}
+    frames = play(doc(phrases, ins, ("[p1, p2]",), head="voices: 2\n"))
+    assert [r >> 4 for r in reg(frames, 0x17)] == [1] * 6 + [5] * 18
+
+
 NOTES = [48, 50, 52, 53]
 
 
