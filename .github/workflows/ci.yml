@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install ".[dev]"
+      - run: pip install ".[dev]" "unitracker @ git+https://github.com/anarkiwi/unitracker"
       - uses: anarkiwi/pysidtracker/.github/actions/cache@v0.30.0
         with:
           key: ${{ hashFiles('tests/*.py') }}
