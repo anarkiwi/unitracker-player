@@ -206,6 +206,13 @@ def test_a_note_less_event_splits_at_its_restart_lookahead(phrase, address, expe
     assert reg(play(doc(phrase, LEAD % HR3)), address) == expected
 
 
+def test_a_note_less_events_filter_program_starts_on_its_step():
+    """A `-` event's !run of a filter program, as its other filter commands, applies on its step,
+    not its restart's last lookahead row."""
+    frames = play(doc("[C4.i1, -!run:f1, -*2]", LEAD % HR3, filter={"f1": "[{cut: 1024}, end]"}))
+    assert cutoff(frames) == [0] * 6 + [1024] * 18
+
+
 FIRST_TICK = "[{hold: 2, gate: 0, ad: 15, sr: 0}, {ctrl: 9, gate: 1, ad: 9, sr: 240}, {}, end]"
 
 

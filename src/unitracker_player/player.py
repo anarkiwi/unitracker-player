@@ -17,7 +17,7 @@ VERSION = "1.20"
 MAX_VOICES = 3
 REGISTERS = 25
 ENVELOPE = ("ad", "sr")
-CHIP = ("cut", "resfilt", "mode", "vol")
+CHIP = ("cut", "resfilt", "mode", "vol", "filter")
 CONTROL, PULSE, FILTER = range(3)
 FREQ_MASK, PW_MASK, CUT_MASK = 0xFFFF, 0xFFF, 0x7FF
 
@@ -424,8 +424,8 @@ class Player:  # pylint: disable=too-many-instance-attributes
             return [(t, (v, event, transpose, ins, None, None))]
         parts = [
             (ahead[0][1], "gate", event.note),
-            (ahead[-1][1], "ops", any(key not in CHIP for key, _ in event.ops)),
-            (0, "chip", any(key in CHIP for key, _ in event.ops)),
+            (ahead[-1][1], "ops", not all(map(_chip, event.ops))),
+            (0, "chip", any(map(_chip, event.ops))),
         ]
         return [
             (max(t - before, 0), (v, event, transpose, ins, None, part))
@@ -612,7 +612,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
         elif event.note is not None and part not in ("ops", "chip"):
             voice.gate = 1 if event.note == "on" else 0
         for key, value in event.ops if part != "gate" else ():
-            if part is None or (part == "chip") == (key in CHIP):
+            if part is None or (part == "chip") == _chip((key, value)):
                 self._command(v, key, value, t)
 
     def _instrument(self, v: int, ins: CInstrument, event: CEvent, t: int):
@@ -718,6 +718,13 @@ class Player:  # pylint: disable=too-many-instance-attributes
             self.cut = mod[0](*at, self.voices[mod[2]].sounding or 0) & CUT_MASK
         for ticks in self._held.values():
             ticks.discard(t)
+
+
+def _chip(op: tuple) -> bool:
+    """Whether a command sets the filter or the volume: of :data:`CHIP`, or a filter program's
+    ``!run``."""
+    key, value = op
+    return key in CHIP or key == "run" and value is not None and value[0] == FILTER
 
 
 def _firing(mod: list, at: int, held: bool, v: int) -> tuple | None:

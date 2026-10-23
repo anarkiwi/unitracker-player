@@ -117,9 +117,10 @@ note's first-tick row: at that row's tick, right after it, so on that tick they 
 row's own `ad` and `sr`; not where that row is dropped.
 
 An `off`, `on` or `-` event runs no row: it applies its gate at the first lookahead row's tick
-and its commands but tempo, `cut`, `resfilt`, `mode` and `vol` ones at the last lookahead row's,
-each at tick 0 if that is earlier, as the voice's event of that tick; those others stay on its
-tick, as does the whole event with no lookahead row. The restart's
+and its commands at the last lookahead row's, each at tick 0 if that is earlier, as the voice's
+event of that tick, but for its tempo, filter and volume ones (`!cut`, `!resfilt`, `!mode`, `!vol`,
+`!filter:none` and a filter program's `!run`), which stay on its tick, as does the whole event
+with no lookahead row. The restart's
 ending is ignored.
 
 ## Programs
