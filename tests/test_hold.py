@@ -48,6 +48,14 @@ def test_a_pulse_holds_on_its_events(hold, held):
     assert pulse(play(text, 12)) == sweep(held, 12)
 
 
+def test_a_legato_hold_is_the_tick_its_note_applies():
+    """D4 !legato applies on its restart's first-tick row, a tick before its step, and holds
+    there."""
+    ins = "{ctrl: [{ctrl: 65}, end], pw: 10*φ + 1, restart: [{hold: 1, gate: 0}, {ctrl: 9}, end]}"
+    text = doc(phrase="[C4.i1, D4!legato, -*2]", ins=ins, head="tempo: 3\nhold: {pw: [legato]}\n")
+    assert pulse(play(text, 12)) == sweep({2}, 12)
+
+
 def test_a_modulator_held_on_the_tick_it_starts_fires_first_on_its_next():
     """A note starts the instrument's pulse on a held step: the step keeps the pulse width, and
     the pulse fires first on the next tick."""

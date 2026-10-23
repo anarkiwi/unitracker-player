@@ -19,7 +19,7 @@ OWNED = ("1.20", "1.21")
 LEGACY = "1.20"
 MAX_VOICES = 3
 REGISTERS = 25
-ENVELOPE = ("ad", "sr")
+ENVELOPE = ("ad", "sr", "ctrl")
 CHIP = ("cut", "resfilt", "mode", "vol")
 CELLS = ("pw", "cut", "freq")
 CONTROL, PULSE, FILTER = range(3)
@@ -539,9 +539,11 @@ class Player:  # pylint: disable=too-many-instance-attributes
         ins = self._ins[v]
         if ins is None and any(k == "run" and val is not None for k, val in event.ops):
             raise PlayError(f"voice {v + 1}: !run at tick {t} on a voice with no instrument")
-        if not ins or not ins.restart or event.legato:
+        if not ins or not ins.restart:
             return [(t, (v, event, transpose, ins, None, None))]
         *ahead, (last, _) = ins.restart
+        if event.legato:
+            return [(max(t - _lookahead(ins), 0), (v, event, transpose, ins, None, None))]
         if ahead and prev is not None:
             ahead[0] = (ahead[0][0], prev.restart[0][1] if prev.restart else 0)
         if isinstance(event.note, int):
@@ -568,9 +570,10 @@ class Player:  # pylint: disable=too-many-instance-attributes
         """The hold ticks of voice ``v``'s step at tick ``t``: the tick of each event it is, and
         of its read, by the restart of the voice's instrument before the step's event."""
         at = {"step": t, "last": t if last else None, "read": None}
-        if event is not None and isinstance(event.note, int):
-            at["legato" if event.legato else "note"] = t
         ins = self._ins[v]
+        if event is not None and isinstance(event.note, int):
+            at["note"] = None if event.legato else t
+            at["legato"] = max(t - _lookahead(event.ins or ins), 0) if event.legato else None
         if ins is not None:
             at["read"] = t - (ins.restart[0][1] if ins.restart else 0)
         for mark, events in self.song.marks.items():
@@ -811,8 +814,10 @@ class Player:  # pylint: disable=too-many-instance-attributes
             self._start(v, FILTER, ins.filter, t)
         if self.song.slots is None:
             voice.freq_mods[0] = None
+            pulsed = ins.pw is not None and not event.keep_pw
             for cell in CELLS:
-                self._end(v, cell, (1,), True)
+                if cell != "pw" or pulsed:
+                    self._end(v, cell, (1,), True)
         for slot, value in ins.freq or ():
             if isinstance(slot, int):
                 self._set(v, "freq", slot, value, t, False, fresh=True)
@@ -912,10 +917,16 @@ class Player:  # pylint: disable=too-many-instance-attributes
             ticks.discard(t)
 
 
+def _lookahead(ins: CInstrument | None) -> int:
+    """The ticks before an event of its restart's last lookahead row, 0 for none."""
+    return ins.restart[-2][1] if ins is not None and ins.restart and len(ins.restart) > 1 else 0
+
+
 def _with_envelope(row: tuple, ops: tuple) -> tuple:
     """Restart row ``row`` with a note's !ad and !sr ``ops`` after its own keys."""
     wait, hold, keys = row
-    return wait, hold, keys + tuple(op for op in ops if op[0] in ENVELOPE)
+    first = ((k, (v, None) if k == "ctrl" else v) for k, v in ops if k in ENVELOPE)
+    return wait, hold, keys + tuple(first)
 
 
 def _chip(op: tuple) -> bool:
