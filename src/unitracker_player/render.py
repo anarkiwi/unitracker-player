@@ -1,0 +1,165 @@
+"""A song played to its registers per tick with its loop proved: for a looping song, the tick
+from which the frames repeat forever, found where the player's whole state recurs."""
+
+from dataclasses import dataclass
+
+import numpy as np
+from tqdm import tqdm
+
+from unitracker_grammar.expr import indexed
+
+from unitracker_player.modulation import SHAPES
+from unitracker_player.player import (
+    REGISTERS,
+    Player,
+    PlayError,
+    _Compiler,
+    _Voice,
+    compile_document,
+)
+from unitracker_player.qperiod import period
+
+PASSES = 1024
+MODS = ("freq_prog", "freq_cmd", "pw_prog", "pw_cmd")
+
+
+class RenderError(PlayError):
+    """A song whose frames do not provably repeat."""
+
+
+@dataclass(frozen=True)
+class Render:
+    """The frames ``(ticks, 25)``; a looping song repeats ``frames[loop:]`` forever."""
+
+    frames: np.ndarray
+    loop: int | None
+
+
+class _Recording(_Compiler):
+    """The player's compiler, remembering each compiled expression's node."""
+
+    nodes: dict = {}
+
+    def fn(self, expr, freq: bool = False):
+        out = super().fn(expr, freq)
+        self.nodes[id(out)] = expr.node if not freq else self._node(expr)
+        return out
+
+    @staticmethod
+    def _node(expr):
+        from unitracker_player.expr import constant, offset  # pylint: disable=C0415
+
+        value = constant(expr.node)
+        return offset(value) if value is not None else expr.node
+
+
+class _Periods:
+    """Each expression's period in φ, proved once; a modulator's φ reduced by it."""
+
+    def __init__(self, nodes: dict, namespace: dict):
+        self.nodes, self.namespace, self.memo = nodes, namespace, {}
+
+    def phi(self, fn, phi: int) -> int:
+        """``phi`` reduced by ``fn``'s period, where it has one and φ is past its start."""
+        if id(fn) not in self.memo:
+            node = self.nodes.get(id(fn))
+            self.memo[id(fn)] = None if node is None else period(node, self.namespace)
+        found = self.memo[id(fn)]
+        if found is None or phi < found[0]:
+            return phi
+        return found[0] + (phi - found[0]) % found[1]
+
+    def mod(self, mod):
+        """A modulator ``[fn, phi, ..., last]`` with its φ and its last firing's reduced."""
+        if mod is None:
+            return None
+        last = mod[-1] and (mod[-1][0], self.phi(mod[0], mod[-1][1]))
+        return (id(mod[0]), self.phi(mod[0], mod[1]), *mod[2:-1], last)
+
+
+def _freeze(obj, t: int):
+    """A hashable image of player state, by identity for compiled song objects."""
+    # pylint: disable=too-many-return-statements
+    if obj is None or isinstance(obj, (int, str, bool)):
+        return obj
+    if isinstance(obj, (list, tuple)):
+        return tuple(_freeze(x, t) for x in obj)
+    if isinstance(obj, dict):
+        return tuple(sorted((k, _freeze(v, t)) for k, v in obj.items()))
+    return ("id", id(obj))
+
+
+def _voice(voice: _Voice, t: int, periods: _Periods) -> tuple:
+    state = dict(vars(voice))
+    state["slots"] = [[p, i, due - t if p is not None else 0] for p, i, due in voice.slots]
+    for name in MODS:
+        state[name] = periods.mod(state[name])
+    osc = voice.osc
+    if osc is not None and osc[0] is SHAPES["set"]:
+        state["osc"] = [*osc[:2], 0, *osc[3:-1], osc[-1] and (osc[-1][0], 0)]
+    return _freeze(state, t)
+
+
+def snapshot(player: Player, periods: _Periods) -> tuple:
+    """The player's state at its current tick, every tick made relative to it and every
+    modulator's φ reduced by its expression's period."""
+    t, seq = player.tick, player._seq  # pylint: disable=protected-access
+    sequencer = (
+        seq.tempo,
+        seq.phase,
+        [id(p) for p in seq.phrase],
+        seq.pos,
+        seq.transpose,
+        seq.rest,
+        [n - t for n in seq.next],
+        seq.stopped,
+        seq.row,
+    )
+    pending = [
+        {k - t: v for k, v in d.items() if v}
+        for d in (player._events, player._lookahead)  # pylint: disable=protected-access
+    ]
+    globals_ = (player.cut, player.res, player.route, player.mode, player.vol)
+    mods = (periods.mod(player.cut_prog), periods.mod(player.cut_cmd))
+    voices = tuple(_voice(v, t, periods) for v in player.voices)
+    ins = player._ins  # pylint: disable=protected-access
+    held = {k: {x - t for x in v} for k, v in player._held.items() if v}  # pylint: disable=W0212
+    return _freeze((voices, globals_, mods, sequencer, ins, pending, held), t)
+
+
+def render(doc, ticks: int | None = None, progress: bool = False) -> Render:
+    """The frames of Document ``doc``: ``ticks`` of them when given (as an ending song), else
+    to its end, or to the first recurrence of its state at its loop row."""
+    # pylint: disable=too-many-locals
+    compiler = type("Recording", (_Recording,), {"nodes": {}})
+    song = compile_document(doc, compiler)
+    namespace = {"_F": song.table, "_T": {k: indexed(v) for k, v in doc.tables.items()}}
+    periods = _Periods(compiler.nodes, namespace)
+    player, rows = Player(song), []
+    seq = player._seq  # pylint: disable=protected-access
+    start_row, starts = seq._start_row, []  # pylint: disable=protected-access
+
+    def counted(t, ending):
+        start_row(t, ending)
+        if song.loop is not None and seq.row == song.loop + 1:
+            starts.append(t)
+
+    seq._start_row = counted  # pylint: disable=protected-access
+    seen: dict = {}
+    with tqdm(total=ticks, unit="tick", disable=not progress) as meter:
+        while ticks is None or len(rows) < ticks:
+            regs = player.step()
+            if regs is None:
+                return Render(np.array(rows, dtype=np.uint8).reshape(-1, REGISTERS), None)
+            rows.append(regs)
+            meter.update()
+            if ticks is None and starts and starts[-1] < player.tick:
+                state = snapshot(player, periods)
+                starts.clear()
+                if state in seen:
+                    frames = np.array(rows, dtype=np.uint8).reshape(-1, REGISTERS)
+                    return Render(frames[: player.tick], seen[state])
+                if len(seen) == PASSES:
+                    raise RenderError(f"no state recurs in {PASSES} passes of the loop")
+                seen[state] = player.tick
+    return Render(np.array(rows, dtype=np.uint8).reshape(-1, REGISTERS), None)

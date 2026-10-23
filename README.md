@@ -1,6 +1,7 @@
 # unitracker-player
 
-The generic player of canonical [unitracker](https://github.com/anarkiwi/unitracker) documents.
+The generic player of canonical [unitracker](https://github.com/anarkiwi/unitracker) documents,
+and their builder into standalone PSID `.sid` files.
 It reads a document with the grammar of
 [unitracker-grammar](https://github.com/anarkiwi/unitracker-grammar) and plays it to the state of
 the 25 SID registers (`$D400`-`$D418`) at the end of each tick. It knows only the document: its
@@ -34,6 +35,17 @@ unitracker-play song.yaml --out frames.csv                # one row per tick, d4
 unitracker-play song.yaml                                 # CSV to stdout
 ```
 
+```sh
+unitracker-sid song.yaml                         # song.sid
+unitracker-sid song.yaml --out x.sid --ticks 3000 --load 0x2000
+```
+
+`unitracker-sid` renders the song here, proves where a looping song repeats, and assembles a
+6502 playroutine (llvm-mos, locally or in the
+[docker-mos-llvm-sdk](https://github.com/anarkiwi/docker-mos-llvm-sdk) image) whose raster IRQ
+plays the same registers tick for tick.
+
 ## Docs
 
 [docs/semantics.md](docs/semantics.md): the meaning of every construct of the grammar as played.
+[docs/sid.md](docs/sid.md): how a document becomes a `.sid`, and the tests that check it.

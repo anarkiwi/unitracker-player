@@ -233,16 +233,16 @@ class _Compiler:
         return (entry.kind,)
 
 
-def compile_document(doc: Document) -> Song:
-    """The Song of a Document: every name resolved and every expression compiled once."""
+def compile_document(doc: Document, compiler=None) -> Song:
+    """The Song of a Document: every name resolved and every expression compiled once, by
+    ``compiler``, a ``_Compiler`` subclass when given."""
     head = doc.header
     if head.version != VERSION:
         raise PlayError(f"version {head.version}: the player reads {VERSION}")
     if not 1 <= head.voices <= MAX_VOICES:
         raise PlayError(f"voices: {head.voices}: the player plays 1 to {MAX_VOICES} voices")
     clock_hz = head.clock_hz or PAL_HZ
-    table = note_table(clock_hz)
-    comp = _Compiler(doc, table)
+    comp = (compiler or _Compiler)(doc, note_table(clock_hz))
     for name in doc.programs:
         comp.program(name)
     for name in doc.instruments:
@@ -269,7 +269,7 @@ def compile_document(doc: Document) -> Song:
         tuple(timeline),
         doc.loop,
         lookahead,
-        table,
+        comp.table,
         hold,
         lookahead + earliest,
     )
