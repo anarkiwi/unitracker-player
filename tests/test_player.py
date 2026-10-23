@@ -194,11 +194,15 @@ HR3 = "[{hold: 2, gate: 0}, {ctrl: 9}, {}, end]"
         ("[C4.i1, -!sr:155, -*2]", 6, [240] * 5 + [155] * 19),
         ("[C4.i1, off, on!sr:155, -]", 4, [65] * 3 + [64] * 6 + [65] * 15),
         ("[C4.i1, off, on!sr:155, -]", 6, [240] * 11 + [155] * 13),
+        ("[C4.i1, -!sr:155!vol:9, -*2]", 6, [240] * 5 + [155] * 19),
+        ("[C4.i1, -!sr:155!vol:9, -*2]", 24, [0] * 6 + [9] * 18),
+        ("[C4.i1, off!resfilt:3/1, -*2]", 23, [0] * 6 + [0x31] * 18),
     ],
 )
 def test_a_note_less_event_splits_at_its_restart_lookahead(phrase, address, expected):
     """An off or on sets its gate on the restart's first lookahead row's tick and the event's
-    commands apply on the last lookahead row's: here 3 and 1 ticks before the step."""
+    voice commands apply on the last lookahead row's: here 3 and 1 ticks before the step; its
+    filter and volume commands stay on the step."""
     assert reg(play(doc(phrase, LEAD % HR3)), address) == expected
 
 
