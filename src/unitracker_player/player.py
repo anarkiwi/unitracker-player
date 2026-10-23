@@ -418,6 +418,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
         restart's lookahead, its gate (part ``gate``) on the first row's tick, its voice's
         commands (part ``ops``) on the last's and its filter and volume ones (part ``chip``) on
         its own."""
+        prev = self._ins[v]
         if event.ins is not None:
             self._ins[v] = event.ins
         ins = self._ins[v]
@@ -426,11 +427,11 @@ class Player:  # pylint: disable=too-many-instance-attributes
         if not ins or not ins.restart or event.legato:
             return [(t, (v, event, transpose, ins, None, None))]
         *ahead, (last, _) = ins.restart
+        if ahead and prev is not None:
+            ahead[0] = (ahead[0][0], prev.restart[0][1] if prev.restart else 0)
         if isinstance(event.note, int):
             if ahead:
-                wait, hold, ops = ahead[-1][0]
-                envelope = tuple(op for op in event.ops if op[0] in ENVELOPE)
-                ahead[-1] = ((wait, hold, ops + envelope), ahead[-1][1])
+                ahead[-1] = (_with_envelope(ahead[-1][0], event.ops), ahead[-1][1])
             for row, before in ahead:
                 if t - before >= 0:
                     self._lookahead[t - before].append((v, row))
@@ -742,6 +743,12 @@ class Player:  # pylint: disable=too-many-instance-attributes
             self.cut = mod[0](*at, self.voices[mod[2]].sounding or 0) & CUT_MASK
         for ticks in self._held.values():
             ticks.discard(t)
+
+
+def _with_envelope(row: tuple, ops: tuple) -> tuple:
+    """Restart row ``row`` with a note's !ad and !sr ``ops`` after its own keys."""
+    wait, hold, keys = row
+    return wait, hold, keys + tuple(op for op in ops if op[0] in ENVELOPE)
 
 
 def _chip(op: tuple) -> bool:
