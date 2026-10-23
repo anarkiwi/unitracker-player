@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unitracker-player"
-version = "0.7.0"
+version = "0.7.1"
 description = "Plays canonical unitracker documents to SID register state per tick, and builds them into standalone .sid files"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -27,7 +27,6 @@ dev = [
   "pytest-xdist>=3",
   "pysidtracker>=0.30.0",
   "zstandard>=0.21",
-  "unitracker @ git+https://github.com/anarkiwi/unitracker",
 ]
 
 [project.scripts]
