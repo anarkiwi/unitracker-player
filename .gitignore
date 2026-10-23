@@ -9,3 +9,7 @@ coverage.xml
 htmlcov/
 .pytest_cache/
 .venv/
+.claude/worktrees/
+.corpus/
+.tmp/
+.tunecache/

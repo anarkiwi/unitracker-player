@@ -18,6 +18,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: pip install ".[dev]"
+      - uses: anarkiwi/pysidtracker/.github/actions/cache@v0.30.0
+        with:
+          key: ${{ hashFiles('tests/*.py') }}
+          sidtrace: "true"
+          tunes: tests
+      - run: docker pull ghcr.io/anarkiwi/docker-mos-llvm-sdk:23.3.0
       - run: black --check src tests
       - run: pylint src
       - run: pylint --disable=missing-function-docstring tests
