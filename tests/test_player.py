@@ -180,7 +180,7 @@ LEAD = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], restart: %s}"
         ("[C4.i1, off, -*2]", I1, 4, [65] * 6 + [64] * 18),
         ("[C4.i1, -!sr:155, -*2]", I1, 6, [240] * 6 + [155] * 18),
         ("[C4.i1, off.i2, -*2]", {"i1": LEAD % HR, "i2": I1}, 4, [65] * 6 + [64] * 18),
-        ("[C4.i2, off.i1, -*2]", {"i1": LEAD % HR, "i2": I1}, 4, [65] * 5 + [64] * 19),
+        ("[C4.i2, off.i1, -*2]", {"i1": LEAD % HR, "i2": I1}, 4, [65] * 6 + [64] * 18),
         ("[C4.i1, D4!legato, -*2]", LEAD % HR, 4, [65] * 24),
         ("[C4.i1, -!sr:155!legato, -*2]", LEAD % HR, 6, [240] * 6 + [155] * 18),
     ],
@@ -221,6 +221,15 @@ def test_a_note_less_events_filter_program_starts_on_its_step():
     not its restart's last lookahead row."""
     frames = play(doc("[C4.i1, -!run:f1, -*2]", LEAD % HR3, filter={"f1": "[{cut: 1024}, end]"}))
     assert cutoff(frames) == [0] * 6 + [1024] * 18
+
+
+def test_a_restart_starts_on_its_steps_read_tick():
+    """D4's restart, of one tick's lookahead, starts where the voice reads its step: three ticks
+    before C4's restart's first-tick row, the lookahead of the instrument before it."""
+    restart = "[{hold: %d, gate: 0, ad: 15, sr: 0}, {ctrl: 9}, {}, end]"
+    ins = {"i1": LEAD % (restart % 3), "i2": LEAD % (restart % 1)}
+    frames = play(doc("[C4.i1, D4.i2, -*2]", ins))
+    assert reg(frames, 5)[:7] == [9, 9, 15, 15, 15, 15, 9]
 
 
 FIRST_TICK = "[{hold: 2, gate: 0, ad: 15, sr: 0}, {ctrl: 9, gate: 1, ad: 9, sr: 240}, {}, end]"
