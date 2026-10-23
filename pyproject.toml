@@ -26,6 +26,7 @@ dev = [
   "pytest-cov>=4",
   "pytest-xdist>=3",
   "pysidtracker>=0.30.0",
+  "zstandard>=0.21",
   "unitracker @ git+https://github.com/anarkiwi/unitracker",
 ]
 
