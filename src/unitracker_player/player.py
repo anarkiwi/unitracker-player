@@ -9,7 +9,7 @@ import numpy as np
 from tqdm import tqdm
 from unitracker_grammar import PAL_HZ
 
-from unitracker_player.document import Document, Expr, Program, note_number, read
+from unitracker_player.document import HOLD, Document, Expr, Program, note_number, read
 from unitracker_player.expr import compile_expr, constant, note_table, offset
 from unitracker_player.modulation import SHAPES
 
@@ -197,7 +197,7 @@ class _Compiler:
         for key, value in event.commands:
             if key == "run":
                 value = None if value is None else (_slot(value), self.program(value))
-            elif key in ("pw", "cut", "freq"):
+            elif key in ("pw", "cut", "freq") and value != HOLD:
                 value = self.expression(value, key == "freq")
             elif key in ("tempo", "vtempo", "legato"):
                 continue
@@ -352,7 +352,7 @@ class _Sequencer:
         return out
 
 
-class _Voice:
+class _Voice:  # pylint: disable=too-many-instance-attributes
     """A voice's cells, note state, modulators and program slots."""
 
     def __init__(self):
@@ -360,6 +360,7 @@ class _Voice:
         self.note = self.absolute = None
         self.relative = 0
         self.freq_prog = self.freq_cmd = self.pw_prog = self.pw_cmd = None
+        self.freq_hold = False
         self.osc = None
         self.slots = [[None, 0, 0] for _ in range(3)]
 
@@ -563,6 +564,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
                 self.cut_prog = [value, 0, v, held + "cut", None, None]
             elif key == "freq":
                 voice.freq_prog = [value, 0, held + "freq", self._before(v, t), None]
+                voice.freq_hold = False
             elif key == "run":
                 self._start(v, value[0], value[1], t)
             elif key == "filter":
@@ -620,6 +622,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
         voice.freq_prog = None if ins.freq is None else [ins.freq, 0, "freq", -1, None]
         self._arm_osc(voice, ins.fn, ins.p0)
         voice.freq_cmd = voice.pw_cmd = None
+        voice.freq_hold = False
         if self.cut_cmd and self.cut_cmd[2] == v:
             self.cut_cmd = None
 
@@ -647,7 +650,12 @@ class Player:  # pylint: disable=too-many-instance-attributes
         elif key == "cut":
             self.cut_cmd = [value, 0, v, "cut", None, None]
         elif key == "freq":
-            voice.freq_cmd = None if value is None else [value, 0, "freq", self._before(v, t), None]
+            voice.freq_hold = value == HOLD
+            voice.freq_cmd = (
+                None if value in (None, HOLD) else [value, 0, "freq", self._before(v, t), None]
+            )
+            if voice.freq_hold:
+                voice.freq_prog = None
             if value is not None:
                 voice.osc = None
         elif key == "set":
@@ -689,7 +697,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
                 continue
             mod, held = self._owner(t, voice.freq_cmd, voice.freq_prog, vix)
             if mod is None:
-                if n is not None:
+                if n is not None and not voice.freq_hold:
                     voice.freq = self.song.table(n)
             elif at := _firing(mod, 1, held, voice.freq):
                 voice.freq = mod[0](*at, n or 0) & FREQ_MASK
