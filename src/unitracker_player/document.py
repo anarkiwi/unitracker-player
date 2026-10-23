@@ -37,10 +37,12 @@ _VALUES = {
     "NAME",
     "HOLD_CELL",
     "HOLD_EVENT",
+    "CELL",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
-_KINDS = {"restart", "ins", "ctrl", "pw", "filter", "x", "phrase"}
+_KINDS = {"restart", "ins", "ctrl", "pw", "filter", "x", "phrase", "mod"}
+_CELL = {"pw": "pw", "filter": "cut", "cut": "cut", "freq": "freq"}
 
 
 def note_number(name: str) -> int:
@@ -51,9 +53,22 @@ def note_number(name: str) -> int:
 
 @dataclass(frozen=True)
 class Expr:
-    """A modulator expression as its node (:mod:`unitracker_grammar.expr`)."""
+    """A modulator expression as its node (:mod:`unitracker_grammar.expr`); with ``bag``, its
+    ``(parameter, value)`` pairs, the node names a template."""
 
     node: ast.expr
+    bag: tuple | None = None
+
+
+@dataclass(frozen=True)
+class Slot:
+    """A cell's modulator slot: its name, its default binding's name, and the
+    ``((event, k), ...)`` it holds and resets on."""
+
+    name: str
+    mod: str | None = None
+    hold: tuple = ()
+    reset: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -67,22 +82,26 @@ class Row:
 
 @dataclass(frozen=True)
 class Program:
-    """Rows in the order they run, then ``end`` (``loop`` None) or ``{loop: k}``."""
+    """Rows in the order they run, then ``end`` (``loop`` None) or ``{loop: k}``; ``fresh``
+    for an instrument's binding fields, whose bindings restart φ."""
 
     rows: tuple
     loop: int | None = None
+    fresh: bool = False
 
 
 @dataclass(frozen=True)
 class Instrument:
-    """An instrument's fields; a program field holds a name or a program, ``freq`` an Expr."""
+    """An instrument's fields; a program field holds a name or a program, ``freq`` its
+    ``(key, binding)`` fields, ``key`` ``freq`` or ``slot.freq`` and a binding an Expr, an
+    instance's name or None."""
 
     ad: int | None = None
     sr: int | None = None
     ctrl: str | Program | None = None
     pw: str | Program | None = None
     filter: str | Program | None = None
-    freq: Expr | None = None
+    freq: tuple = ()
     fn: object | None = None
     p0: dict | None = None
     restart: str | Program | None = None
@@ -112,7 +131,8 @@ class Play:
 
 @dataclass(frozen=True)
 class Header:
-    """The header lines, with their defaults; ``hold`` is ``{cell: ((event, k), ...)}``."""
+    """The header lines, with their defaults; ``hold`` is ``{cell: ((event, k), ...)}``,
+    ``slots`` ``{cell: (Slot, ...)}``."""
 
     version: str
     meta: dict = field(default_factory=dict)
@@ -121,12 +141,14 @@ class Header:
     voices: int = 3
     tempo: tuple = (6, 6)
     hold: dict = field(default_factory=dict)
+    slots: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class Document:
     """A whole document: the header, its tables and init row, every definition by name and the
-    timeline's rows of play entries with its ending (``loop`` None for ``end``)."""
+    timeline's rows of play entries with its ending (``loop`` None for ``end``); ``templates``
+    the ``mod`` records."""
 
     header: Header
     tables: dict
@@ -137,6 +159,7 @@ class Document:
     phrases: dict
     timeline: tuple
     loop: int | None
+    templates: dict = field(default_factory=dict)
 
 
 def _tok(token: Token):
@@ -210,6 +233,7 @@ class ToDocument(Nodes):
             head.pop("voices", 3),
             head.pop("tempo", (6, 6)),
             head.pop("hold", {}),
+            head.pop("slots", {}),
         )
         programs = {**defs["restart"], **defs["ctrl"], **defs["pw"], **defs["filter"]}
         return Document(
@@ -222,6 +246,7 @@ class ToDocument(Nodes):
             defs["phrase"],
             tuple(timeline),
             head["ending"],
+            defs["mod"],
         )
 
     @staticmethod
@@ -260,8 +285,27 @@ class ToDocument(Nodes):
 
     @staticmethod
     def hold_cell(children):
-        cell, *events = _values(children)
-        return cell, tuple((name, int(k or 0)) for name, _, k in (e.partition("-") for e in events))
+        return tuple(_values(children))
+
+    @staticmethod
+    def events(children):
+        return tuple(
+            (str(name), int(k or 0)) for name, _, k in (e.partition("-") for e in children)
+        )
+
+    @staticmethod
+    def slots(children):
+        return ("slots", dict(_values(children)))
+
+    @staticmethod
+    def slot_cell(children):
+        cell, *slots = _values(children)
+        return cell, tuple(slots)
+
+    @staticmethod
+    def slot(children):
+        name, *rest = _values(children)
+        return Slot(name, **(rest[0] if rest else {}))
 
     @staticmethod
     def tables(children):
@@ -299,21 +343,28 @@ class ToDocument(Nodes):
 
     @staticmethod
     def section(children):
-        kind = children[0].type.lower()
-        values = _values(children)
-        entries = list(zip(values[::2], values[1::2]))
-        if kind == "x":
-            entries = [(n, Expr(v)) for n, v in entries]
-        elif kind in ("pw", "filter"):
-            entries = [(n, _modulation(kind, v)) for n, v in entries]
-        return (kind, entries)
+        kind = {"name": "mod"}.get(children[0].type.lower(), children[0].type.lower())
+        entries = []
+        for c in _values(children):
+            if isinstance(c, str):
+                entries.append([c])
+            elif isinstance(c, dict):
+                entries[-1][1] = Expr(entries[-1][1], tuple(c.items()))
+            else:
+                entries[-1].append(c)
+        if kind in ("x", "mod"):
+            return (kind, [(n, v if isinstance(v, Expr) else Expr(v)) for n, v in entries])
+        if kind in ("pw", "filter"):
+            return (kind, [(n, _modulation(kind, [(kind, v)])) for n, v in entries])
+        return (kind, [tuple(e) for e in entries])
 
     @staticmethod
     def instrument(children):
         values = dict(_values(children)[0])
-        for kind in ("pw", "filter"):
-            if kind in values:
-                values[kind] = _modulation(kind, values[kind])
+        for kind in ("pw", "filter", "freq"):
+            fields = [(k, values.pop(k)) for k in list(values) if k.rpartition(".")[2] == kind]
+            if fields:
+                values[kind] = tuple(fields) if kind == "freq" else _modulation(kind, fields, True)
         return Instrument(**values)
 
     @staticmethod
@@ -326,6 +377,11 @@ class ToDocument(Nodes):
     @staticmethod
     def modulation(children):
         return _values(children)[0]
+
+    @staticmethod
+    def bound(children):
+        expr, bag = children
+        return Expr(expr.node, tuple(bag.items()))
 
     @staticmethod
     def ins_fn(children):
@@ -430,22 +486,65 @@ class ToDocument(Nodes):
         return Expr(super().fexpr(children))
 
 
+def _slot_link(key):
+    """A slot's key chain link: ``mod`` its name, ``hold`` and ``reset`` their events."""
+
+    def method(_self, children):
+        own = [c for c in children if not isinstance(c, dict)]
+        rest = next((c for c in children if isinstance(c, dict)), {})
+        return {key: str(own[0]) if key == "mod" else own[0], **rest} if own else rest
+
+    return method
+
+
+def _slotted(cell: str):
+    """A modulated cell's link of a key chain: its own key (``cell``, or ``slot.cell`` under a
+    slot prefix or a slotted command) and value before the chain's rest."""
+
+    def method(_self, children):
+        rest, own, key = {}, [], cell
+        for c in _values(children):
+            if isinstance(c, dict):
+                rest = c
+            else:
+                own.append(c)
+        for c in children:
+            if isinstance(c, Token) and c.type == "SLOT":
+                key = c + cell
+            elif isinstance(c, Token) and c.type.startswith("CMD_"):
+                key = c[1:-1]
+        return {key: own[0], **rest} if own else rest
+
+    return method
+
+
 for _name, _method in {
-    **_chain(
-        "row", "wait hold ctrl gate note ad sr pw cut res route mode freq run filter vol".split()
-    ),
-    **_chain("ins", "ad sr ctrl pw filter freq restart".split()),
-    **_chain("cmd", "run pw ad sr ctrl resfilt mode vol cut tempo vtempo freq".split()),
+    **_chain("row", "wait hold ctrl gate note ad sr res route mode run filter vol".split()),
+    **_chain("ins", "ad sr ctrl restart".split()),
+    **_chain("cmd", "run ad sr ctrl resfilt mode vol tempo vtempo".split()),
+    **{f"{chain}_{c}": _slotted(c) for chain in ("row", "cmd") for c in ("pw", "cut", "freq")},
+    **{f"ins_{c}": _slotted(c) for c in ("pw", "filter", "freq")},
+    **{f"slot_{k}": _slot_link(k) for k in ("mod", "hold", "reset")},
 }.items():
     setattr(ToDocument, _name, _method)
 
 
-def _modulation(kind: str, value):
-    """A pulse or filter modulation as a program: an expression is a one-row program setting
-    the slot's cell."""
-    if isinstance(value, Expr):
-        return Program((Row(keys=(("pw" if kind == "pw" else "cut", value),)),))
-    return value
+def _program(value) -> bool:
+    """Whether a pulse or filter field is a program or a program's name, not a binding."""
+    return isinstance(value, Program) or isinstance(value, str) and not value.startswith("x")
+
+
+def _modulation(kind: str, fields: list, fresh: bool = False):
+    """A pulse or filter modulation's ``(key, value)`` fields as one program: a program or its
+    name, unprefixed and alone, is itself; bindings are one row binding each one's slot of the
+    cell."""
+    if len(fields) == 1 and fields[0][0] == kind and _program(fields[0][1]):
+        return fields[0][1]
+    if any(_program(value) for _, value in fields):
+        raise CanonicalError(f"{kind}: a program is the one {kind} field and takes no slot")
+    cell = _CELL[kind]
+    keys = tuple((k[: -len(kind)] + cell, v) for k, v in fields)
+    return Program((Row(keys=keys),), fresh=fresh)
 
 
 def read(text: str) -> Document:
