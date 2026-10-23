@@ -379,7 +379,7 @@ class ToDocument(Nodes):
         return ("rel", value) if isinstance(value, int) else ("abs", note_number(value))
 
     @staticmethod
-    def pw_value(children):
+    def cell_value(children):
         values = _values(children)
         return values[0] if values else NONE
 

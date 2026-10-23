@@ -20,7 +20,7 @@ def test_the_header_is_read_with_its_values():
     header = read(text).header
     assert header.meta == {"title": "It's", "author": 'A "B"', "released": "1987"}
     assert (header.cycles_per_tick, header.clock_hz) == (17095, 1022727)
-    assert (header.voices, header.tempo, header.version) == (2, (6, 7), "1.20")
+    assert (header.voices, header.tempo, header.version) == (2, (6, 7), "1.21")
     assert read(text).tables == {"W": (1, 2, 3)}
 
 
