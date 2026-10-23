@@ -127,9 +127,11 @@ def test_the_init_row_applies_before_the_first_step(init, address, expected):
 
 
 def test_an_init_command_modulator_lasts_until_a_note_starts_an_instrument():
-    """`!pw:x1` from init fires from tick 0 and ends at the first note, the width holding."""
-    frames = play(doc("[-*2, C4.i1, -]", head="init: [-!pw:x1]\n", x={"x1": "v + 1"}))
-    assert pulse(frames) == [t + 1 for t in range(12)] + [12] * 12
+    """`!pw:x1` from init fires from tick 0 and ends at the first note, whose instrument restarts
+    the pulse program."""
+    ins = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], pw: 50}"
+    frames = play(doc("[-*2, C4.i1, -]", ins, head="init: [-!pw:x1]\n", x={"x1": "v + 1"}))
+    assert pulse(frames) == [t + 1 for t in range(12)] + [50] * 12
 
 
 @pytest.mark.parametrize(
@@ -182,14 +184,14 @@ LEAD = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], restart: %s}"
         ("[C4.i1, off.i2, -*2]", {"i1": LEAD % HR, "i2": I1}, 4, [65] * 6 + [64] * 18),
         ("[C4.i2, off.i1, -*2]", {"i1": LEAD % HR, "i2": I1}, 4, [65] * 6 + [64] * 18),
         ("[C4.i1, D4!legato, -*2]", LEAD % HR, 4, [65] * 24),
-        ("[C4.i1, -!sr:155!legato, -*2]", LEAD % HR, 6, [240] * 6 + [155] * 18),
+        ("[C4.i1, -!sr:155!legato, -*2]", LEAD % HR, 6, [240] * 5 + [155] * 19),
     ],
 )
 def test_an_event_applies_at_its_restart_lookahead(phrase, ins, address, expected):
     """A note's restart rows run before it and the note stays on its tick; an off, on or `-`
     with commands applies whole at the restart's first row's tick (tick 0 at the latest) and
-    runs no row; without a lookahead row, without a restart, a `-` without commands and under
-    !legato the event stays on its step."""
+    runs no row; without a lookahead row, without a restart and a `-` without commands the event
+    stays on its step; a !legato event applies whole on its restart's last lookahead row's tick."""
     assert reg(play(doc(phrase, ins)), address) == expected
 
 
@@ -242,20 +244,35 @@ FIRST_TICK = "[{hold: 2, gate: 0, ad: 15, sr: 0}, {ctrl: 9, gate: 1, ad: 9, sr: 
         ("[C4.i1, D4!ad:10, -*2]", FIRST_TICK, 5, [9] * 3 + [15] * 2 + [10] * 19),
         ("[C4.i1, D4!sr:155, -*2]", FIRST_TICK, 6, [240] * 3 + [0] * 2 + [155] * 19),
         ("[C4.i1, D4!sr:155, -*2]", FIRST_TICK, 5, [9] * 3 + [15] * 2 + [9] * 19),
-        ("[C4.i1, D4!ad:10!legato, -*2]", FIRST_TICK, 5, [9] * 6 + [10] * 18),
+        ("[C4.i1, D4!ad:10!legato, -*2]", FIRST_TICK, 5, [9] * 5 + [10] * 19),
         ("[C4.i1!ad:10, -*3]", FIRST_TICK, 5, [10] * 24),
         ("[C4.i1, D4!ad:10, -*2]", HR, 5, [9] * 5 + [10] * 19),
         ("[C4.i1, D4!ad:10, -*2]", "[{ctrl: 9}, end]", 5, [9] * 6 + [10] * 18),
+        ("[C4.i1, D4!ctrl:33, -*2]", FIRST_TICK, 4, [65] * 3 + [64] * 2 + [33] + [65] * 18),
     ],
 )
 def test_a_notes_envelope_commands_apply_with_its_restarts_first_tick_row(
     phrase, restart, address, expected
 ):
-    """A note's !ad and !sr apply after its restart's last lookahead row, on that row's tick,
-    winning over the row's own ad and sr, and again on the note's tick after its instrument;
-    its other commands, a dropped row, a restart of one row and !legato leave them on its
-    tick."""
+    """A note's !ad, !sr and !ctrl apply after its restart's last lookahead row, on that row's
+    tick, winning over the row's own keys, and again on the note's tick after its instrument;
+    its other commands, a dropped row and a restart of one row leave them on its tick, and a
+    !legato note applies whole on that row's tick."""
     assert reg(play(doc(phrase, LEAD % restart)), address) == expected
+
+
+def test_a_note_that_keeps_the_pulse_program_keeps_the_pw_command():
+    """D4's instrument has no pulse program, so the !pw command C4 started keeps the pulse
+    width; i1's own pulse program never takes it over."""
+    ins = {"i1": "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], pw: 2000}", "i2": BARE}
+    frames = play(doc("[C4.i1!pw:x1, D4.i2, -*2]", ins, x={"x1": "1000 + φ"}))
+    assert pulse(frames) == [1000 + t for t in range(24)]
+
+
+def test_a_legato_note_applies_on_its_restarts_first_tick_row():
+    """D4 !legato sets the note, and with it F(N), on the tick its restart's first-tick row
+    would apply, a tick before its step."""
+    assert freq(play(doc("[C4.i1, D4!legato, -*2]", LEAD % HR)))[3:8] == [F(48)] * 2 + [F(50)] * 3
 
 
 def test_a_note_triggers_on_its_step_after_its_restart_lookahead():
@@ -338,7 +355,7 @@ CASES = {
     "pw-x-persists": (
         doc(phrase="[C4.i1, -!pw:x1, -, D4]", x={"x1": "v + 100"}),
         pulse,
-        [0 if t < 6 else 100 * (t - 5) if t < 18 else 1200 for t in R24],
+        [0 if t < 6 else 100 * (t - 5) for t in R24],
     ),
     "pw-command-owns": (
         doc(ins="{pw: v + 1000}", phrase="[C4.i1, -!pw:7, D4, -]"),

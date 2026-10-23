@@ -109,7 +109,8 @@ the gate on and starts the voice's instrument, if it has one:
 Every binding of the instrument's fields, its `pw` and `filter` fields' too, starts φ at 0. No
 other binding ends: an instrument field it leaves out leaves what it would set as it is. A
 note with `!legato` sets only the event note: the gate, the rows' note, the programs and the
-bindings are untouched, and no restart runs.
+bindings are untouched, and no restart runs; it applies on its restart's last lookahead row's
+tick (see [Hard restart](#hard-restart)).
 
 ## Hard restart
 
@@ -123,9 +124,10 @@ rows before the last are its lookahead.
 A note runs the rows: each applies with its row meaning at its tick, before the voice's events
 of that tick, even before the voice's previous event; a row that falls before tick 0 is
 dropped; the last applies before the note and with a `ctrl` sets the gate on. The note and its
-commands stay on its tick. Its `!ad` and `!sr` also apply with the last lookahead row, the
-note's first-tick row: at that row's tick, right after it, so on that tick they win over the
-row's own `ad` and `sr`; not where that row is dropped.
+commands stay on its tick. Its `!ad`, `!sr` and `!ctrl` also apply with the last lookahead
+row, the note's first-tick row: at that row's tick, right after it, so on that tick they win over
+the row's own `ad`, `sr` and `ctrl`; not where that row is dropped. A `!legato` event runs no row
+and applies whole on the last lookahead row's tick, at tick 0 if that is earlier.
 
 An `off`, `on` or `-` event runs no row: it applies its gate at the first lookahead row's tick
 and its commands at the last lookahead row's, each at tick 0 if that is earlier, as the voice's
@@ -296,7 +298,8 @@ on the tick a note without `!legato` starts takes its value at φ = -1 with the 
 every other keeps its cell's value. Every binding starts φ at 0.
 
 A note that starts an instrument binds the frequency's program slot to the instrument's `freq`,
-or unbinds it, and ends the voice's command bindings, and the cutoff's where this voice made it.
+or unbinds it, and ends the voice's command bindings, but the pulse width's where it keeps the
+pulse program, and the cutoff's where this voice made it.
 A row's `none` ends the program slot's binding and a command's the command slot's; a row's
 `hold` ends the program slot's and a command's both, each also stopping the voice's program
 slot of the cell. Slot defaults, reset events and the order of slots do not apply.
