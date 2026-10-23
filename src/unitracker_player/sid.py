@@ -16,13 +16,12 @@ from unitracker_player.render import Render, render
 LOAD = 0x1000
 RASTER = 0x30
 ZP = 0x02
-STACK = 256
 ASM = ("player.s", "link.ld")
 OPS = {"call": 0xE0, "jump": 0xE1, "ret": 0xE2, "stop": 0xE3}
 
 
 class SidError(PlayError):
-    """A document the playroutine cannot hold."""
+    """A song whose playroutine does not assemble, as one too large for its load address."""
 
 
 @dataclass(frozen=True)
@@ -52,8 +51,6 @@ def plan(rendered: Render) -> Plan:
     grammar = streams.inline(streams.repair(seqs))
     need: dict = {}
     depths = tuple(_stack(grammar, s, need, top=True) for s in grammar.starts)
-    if sum(depths) > STACK:
-        raise SidError(f"call nesting {sum(depths)} exceeds the {STACK}-entry stack")
     return Plan(tuple(cells), grammar, depths, rendered)
 
 
@@ -133,10 +130,13 @@ def assembly(p: Plan) -> tuple:  # pylint: disable=too-many-locals
     n = len(p.cells)
     zp = {name: ZP + i * n for i, name in enumerate(("cnt", "dlo", "dhi", "vlo", "vhi"))}
     inc = [f"        .set {k}, {v:#04x}\n" for k, v in zp.items()]
-    inc += [f"        .set ptr, {ZP + 5 * n:#04x}\n", f"        .set tmp, {ZP + 5 * n + 2:#04x}\n"]
+    inc += [
+        f"        .set {k}, {ZP + 5 * n + 2 * i:#04x}\n"
+        for i, k in enumerate(("ptr", "sptr", "tmp"))
+    ]
     inc += [f"        .set STREAMS, {n}\n", f"        .set RASTER, {RASTER:#04x}\n"]
     loop = p.render.loop is not None
-    shared = "start stack_base ipl iph depth stack_lo stack_hi"
+    shared = "start stack_start ipl iph spl sph"
     out = [
         '        .include "song.inc"\n',
         f"        .globl {', '.join(shared.split())}\n",
@@ -147,23 +147,17 @@ def assembly(p: Plan) -> tuple:  # pylint: disable=too-many-locals
     out.append("        rts\n")
     out.append('        .section .rodata.song,"a",@progbits\n')
     out.append("start:\n" + "".join(f"        .short s{s}\n" for s in range(n)))
-    bases = [sum(p.depths[:s]) for s in range(n)]
-    out.append("stack_base:\n" + "".join(f"        .byte {b}\n" for b in bases))
+    bases = [2 * sum(p.depths[:s]) for s in range(n)]
+    out.append("stack_start:\n" + "".join(f"        .short stack+{b}\n" for b in bases))
     for s, seq in enumerate(p.grammar.starts):
         out.append(f"s{s}:\n" + "".join(_symbol(x, f"s{s}", loop, False) for x in seq))
     for r, body in enumerate(p.grammar.rules):
         text = "".join(_symbol(x, "", loop, i == len(body) - 1) for i, x in enumerate(body))
         ret = "" if isinstance(body[-1], int) else f"        .byte {OPS['ret']:#04x}\n"
         out.append(f"r{r}:\n{text}{ret}")
-    stack = max(sum(p.depths), 1)
+    stack = max(2 * sum(p.depths), 1)
     out.append('        .section .bss.song,"aw",@nobits\n')
-    for name, size in (
-        ("ipl", n),
-        ("iph", n),
-        ("depth", n),
-        ("stack_lo", stack),
-        ("stack_hi", stack),
-    ):
+    for name, size in (("ipl", n), ("iph", n), ("spl", n), ("sph", n), ("stack", stack)):
         out.append(f"{name}:\n        .zero {size}\n")
     return "".join(inc), "".join(out)
 
@@ -174,11 +168,14 @@ def assemble(p: Plan, load: int = LOAD) -> bytes:
     with tempfile.TemporaryDirectory(prefix="ut-sid-") as tmp:
         build_dir = Path(tmp)
         mos.stage(build_dir, {"song.inc": inc, "song.s": song}, *ASM)
-        mos.run(
-            build_dir,
-            f"mos-common-clang -nostdlib -T link.ld -Wl,--defsym=__load={load}"
-            " -o song.bin player.s song.s",
-        )
+        try:
+            mos.run(
+                build_dir,
+                f"mos-common-clang -nostdlib -T link.ld -Wl,--defsym=__load={load}"
+                " -o song.bin player.s song.s",
+            )
+        except mos.ToolchainError as exc:
+            raise SidError(str(exc)) from exc
         return (build_dir / "song.bin").read_bytes()
 
 

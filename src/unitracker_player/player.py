@@ -242,8 +242,7 @@ def compile_document(doc: Document, compiler=None) -> Song:
     if not 1 <= head.voices <= MAX_VOICES:
         raise PlayError(f"voices: {head.voices}: the player plays 1 to {MAX_VOICES} voices")
     clock_hz = head.clock_hz or PAL_HZ
-    table = note_table(clock_hz)
-    comp = (compiler or _Compiler)(doc, table)
+    comp = (compiler or _Compiler)(doc, note_table(clock_hz))
     for name in doc.programs:
         comp.program(name)
     for name in doc.instruments:
@@ -270,7 +269,7 @@ def compile_document(doc: Document, compiler=None) -> Song:
         tuple(timeline),
         doc.loop,
         lookahead,
-        table,
+        comp.table,
         hold,
         lookahead + earliest,
     )

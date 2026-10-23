@@ -46,8 +46,9 @@ the register(s). Runs are encoded:
 | `e2` | return |
 | `e3` | hold forever: an ending song's end |
 
-Each stream has a stack as deep as its deepest nesting of calls that are not last in their rule,
-and all the stacks share 256 entries. Stream state lives in zero page from `$02`.
+Each stream has its own stack of return addresses, as deep as its deepest nesting of calls that
+are not last in their rule, reached through a 16-bit pointer. The hot stream state (count,
+delta, value) lives in zero page from `$02`.
 
 ## Tests
 

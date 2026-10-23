@@ -50,8 +50,10 @@ init_state:
         sta ipl,x
         lda start+1,y
         sta iph,x
-        lda stack_base,x
-        sta depth,x
+        lda stack_start,y
+        sta spl,x
+        lda stack_start+1,y
+        sta sph,x
         dex
         bpl 2b
         rts
@@ -118,15 +120,25 @@ control:
         bcs stop
         cmp #0xe1
         beq jump
-        ldy depth,x
+        lda spl,x
+        sta sptr
+        lda sph,x
+        sta sptr+1
+        ldy #0
         clc
         lda ptr
         adc #3
-        sta stack_lo,y
+        sta (sptr),y
+        iny
         lda ptr+1
         adc #0
-        sta stack_hi,y
-        inc depth,x
+        sta (sptr),y
+        clc
+        lda spl,x
+        adc #2
+        sta spl,x
+        bcc jump
+        inc sph,x
 jump:   ldy #1
         lda (ptr),y
         pha
@@ -136,11 +148,20 @@ jump:   ldy #1
         pla
         sta ptr
         jmp op
-return: dec depth,x
-        ldy depth,x
-        lda stack_lo,y
+return: sec
+        lda spl,x
+        sbc #2
+        sta spl,x
+        sta sptr
+        lda sph,x
+        sbc #0
+        sta sph,x
+        sta sptr+1
+        ldy #0
+        lda (sptr),y
         sta ptr
-        lda stack_hi,y
+        iny
+        lda (sptr),y
         sta ptr+1
         jmp op
 stop:   lda #0xff

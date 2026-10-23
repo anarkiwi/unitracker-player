@@ -80,7 +80,7 @@ def test_the_psid_header():
     assert len(data) == 0x7C + 1 and data[-1] == 0xEA
 
 
-def test_too_deep_a_grammar_is_refused(monkeypatch):
-    monkeypatch.setattr(sid, "STACK", 0)
-    with pytest.raises(sid.SidError):
-        sid.plan(render(read(SONGS["looping"])))
+@pytest.mark.usefixtures("toolchain")
+def test_an_image_past_d000_is_refused():
+    with pytest.raises(sid.SidError, match="D000"):
+        sid.build(SONGS["looping"], load=0xCF80)

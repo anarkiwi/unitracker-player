@@ -70,10 +70,11 @@ class _Periods:
         return found[0] + (phi - found[0]) % found[1]
 
     def mod(self, mod):
-        """A modulator ``[fn, phi, ...]`` with its φ reduced."""
+        """A modulator ``[fn, phi, ..., last]`` with its φ and its last firing's reduced."""
         if mod is None:
             return None
-        return (id(mod[0]), self.phi(mod[0], mod[1]), *mod[2:])
+        last = mod[-1] and (mod[-1][0], self.phi(mod[0], mod[-1][1]))
+        return (id(mod[0]), self.phi(mod[0], mod[1]), *mod[2:-1], last)
 
 
 def _freeze(obj, t: int):
@@ -93,8 +94,9 @@ def _voice(voice: _Voice, t: int, periods: _Periods) -> tuple:
     state["slots"] = [[p, i, due - t if p is not None else 0] for p, i, due in voice.slots]
     for name in MODS:
         state[name] = periods.mod(state[name])
-    if voice.osc is not None and voice.osc[0] is SHAPES["set"]:
-        state["osc"] = [voice.osc[0], voice.osc[1], 0]
+    osc = voice.osc
+    if osc is not None and osc[0] is SHAPES["set"]:
+        state["osc"] = [*osc[:2], 0, *osc[3:-1], osc[-1] and (osc[-1][0], 0)]
     return _freeze(state, t)
 
 
@@ -121,7 +123,8 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
     mods = (periods.mod(player.cut_prog), periods.mod(player.cut_cmd))
     voices = tuple(_voice(v, t, periods) for v in player.voices)
     ins = player._ins  # pylint: disable=protected-access
-    return _freeze((voices, globals_, mods, sequencer, ins, pending), t)
+    held = {k: {x - t for x in v} for k, v in player._held.items() if v}  # pylint: disable=W0212
+    return _freeze((voices, globals_, mods, sequencer, ins, pending, held), t)
 
 
 def render(doc, ticks: int | None = None, progress: bool = False) -> Render:
