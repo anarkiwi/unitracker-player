@@ -17,6 +17,7 @@ VERSION = "1.20"
 MAX_VOICES = 3
 REGISTERS = 25
 ENVELOPE = ("ad", "sr")
+CHIP = ("cut", "resfilt", "mode", "vol")
 CONTROL, PULSE, FILTER = range(3)
 FREQ_MASK, PW_MASK, CUT_MASK = 0xFFFF, 0xFFF, 0x7FF
 
@@ -399,8 +400,9 @@ class Player:  # pylint: disable=too-many-instance-attributes
 
     def _schedule(self, t: int, v: int, event: CEvent, transpose: int) -> list:
         """The ``(tick, event item)`` pairs of an event: a note-less one split at its
-        restart's lookahead, its gate (part ``gate``) on the first row's tick and its commands
-        (part ``ops``) on the last's."""
+        restart's lookahead, its gate (part ``gate``) on the first row's tick, its voice's
+        commands (part ``ops``) on the last's and its filter and volume ones (part ``chip``) on
+        its own."""
         if event.ins is not None:
             self._ins[v] = event.ins
         ins = self._ins[v]
@@ -420,7 +422,11 @@ class Player:  # pylint: disable=too-many-instance-attributes
             return [(t, (v, event, transpose, ins, last, None))]
         if not ahead:
             return [(t, (v, event, transpose, ins, None, None))]
-        parts = [(ahead[0][1], "gate", event.note), (ahead[-1][1], "ops", event.ops)]
+        parts = [
+            (ahead[0][1], "gate", event.note),
+            (ahead[-1][1], "ops", any(key not in CHIP for key, _ in event.ops)),
+            (0, "chip", any(key in CHIP for key, _ in event.ops)),
+        ]
         return [
             (max(t - before, 0), (v, event, transpose, ins, None, part))
             for before, part, has in parts
@@ -591,7 +597,8 @@ class Player:  # pylint: disable=too-many-instance-attributes
     def _event(
         self, t: int, v: int, event: CEvent, transpose: int, ins, last, part
     ):  # pylint: disable=too-many-arguments,too-many-positional-arguments
-        """Event ``event``, or its ``part``: ``gate`` its gate alone, ``ops`` its commands."""
+        """Event ``event``, or its ``part``: ``gate`` its gate alone, ``ops`` its voice's
+        commands, ``chip`` its filter and volume ones."""
         voice = self.voices[v]
         if last is not None:
             self._row(v, last, t, True)
@@ -602,10 +609,11 @@ class Player:  # pylint: disable=too-many-instance-attributes
                 self._noted[v] = t
                 if ins is not None:
                     self._instrument(v, ins, event, t)
-        elif event.note is not None and part != "ops":
+        elif event.note is not None and part not in ("ops", "chip"):
             voice.gate = 1 if event.note == "on" else 0
         for key, value in event.ops if part != "gate" else ():
-            self._command(v, key, value, t)
+            if part is None or (part == "chip") == (key in CHIP):
+                self._command(v, key, value, t)
 
     def _instrument(self, v: int, ins: CInstrument, event: CEvent, t: int):
         voice = self.voices[v]
