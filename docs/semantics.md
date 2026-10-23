@@ -166,7 +166,7 @@ cell's value before the firing, then φ + 1, but on its cell's hold ticks (see [
 A modulator starts with φ = 0 at the tick it is set and fires that tick,
 unless it holds. A modulator that does
 not own its cell does not fire and keeps its φ. A cell with no modulator holds its value, but
-the frequency, which is `F(N)` then.
+the frequency, which is `F(N)` then unless `!freq:hold` stopped it.
 
 Expressions are compiled by `unitracker_grammar.expr` with `zero=True`. They are Python
 integers: `//` and `%` are floored, and 0 when the divisor is 0; a
@@ -219,6 +219,7 @@ A command applies from the step that carries it, after its note, in grammar orde
 | `!freq:n`, `!freq:+n`, `!freq:-n` | the frequency's command modulator becomes `F(N) + n` |
 | `!freq:xN` | ... becomes `xN` |
 | `!freq:none` | ends `!freq`; the frequency's program modulator, or `F(N)`, drives it again |
+| `!freq:hold` | ends `!freq` and the frequency's program modulator; nothing drives the frequency, which holds, until a note starts an instrument, a row sets `freq` or another `!freq` |
 | `!legato` | see [Notes](#notes) |
 | `!pw`, `!filter` | the note keeps its pulse / filter program (see [Notes](#notes)) |
 | `*k` | the event lasts `k` steps |

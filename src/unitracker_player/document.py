@@ -11,6 +11,7 @@ from unitracker_grammar import CanonicalError, parser
 from unitracker_grammar.expr import Nodes
 
 NONE = None
+HOLD = "hold"
 _MISSING = object()
 _VALUES = {
     "INT",
@@ -32,6 +33,7 @@ _VALUES = {
     "VERSION",
     "CTRLMASK",
     "NONE",
+    "HOLD",
     "NAME",
     "HOLD_CELL",
     "HOLD_EVENT",

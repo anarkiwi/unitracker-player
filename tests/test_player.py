@@ -266,6 +266,34 @@ CASES = {
         freq,
         [F(48) + (t if t < 6 else 0 if t < 12 else t - 6) for t in R24],
     ),
+    "freq-hold-keeps-a-slide": (
+        doc(phrase="[C4.i1!freq:x1, -!freq:hold, -*2]", x={"x1": "F(N) + φ"}),
+        freq,
+        [F(48) + min(t, 5) for t in R24],
+    ),
+    "freq-hold-ends-the-program-modulator": (
+        doc(ins="{freq: F(N) + φ}", phrase="[C4.i1, -!freq:hold, -*2]"),
+        freq,
+        [F(48) + min(t, 5) for t in R24],
+    ),
+    "freq-hold-ends-at-note": (
+        doc(phrase="[C4.i1!freq:+5, -!freq:hold, D4, -]"),
+        freq,
+        [F(48) + 5] * 12 + [F(50)] * 12,
+    ),
+    "freq-hold-none": (
+        doc(phrase="[C4.i1!freq:+5, -!freq:hold, -!freq:none, -]"),
+        freq,
+        [F(48) + 5] * 12 + [F(48)] * 12,
+    ),
+    "freq-hold-yields-to-a-row": (
+        doc(
+            ins="{ctrl: [{ctrl: 65}, {wait: 9, freq: F(N) + 50}, end]}",
+            phrase="[C4.i1!freq:+5, -!freq:hold, -*2]",
+        ),
+        freq,
+        [F(48) + (5 if t < 10 else 50) for t in R24],
+    ),
     "freq-wraps-16-bits": (doc(ins="{freq: F(N) + 65539}"), freq, [F(48) + 3] * 24),
     "pw-x-persists": (
         doc(phrase="[C4.i1, -!pw:x1, -, D4]", x={"x1": "v + 100"}),
