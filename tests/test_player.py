@@ -628,7 +628,7 @@ def _twice(text: str) -> str:
 @pytest.mark.parametrize(
     "text, match",
     [
-        (doc().replace("1.21", "1.22"), "version"),
+        (doc().replace("1.21", "1.23"), "version"),
         (doc(ins="{filter: [{cut: 9}, {filter: none}, end]}"), "spelling of cut: hold"),
         (doc("[C4.i1!filter:none, -*3]"), "spelling of cut: hold"),
         (doc(head="voices: 4\n", rows=("[p1, p1, p1, p1]",)), "voices"),

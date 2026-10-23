@@ -8,28 +8,37 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 
 | line | meaning |
 |---|---|
-| `unitracker` | `1.21`, or `1.20` (see [Format 1.20](#format-120)); any other version is refused |
+| `unitracker` | `1.22`, or `1.21` and `1.20` (see [Format 1.21](#format-121)); any other version is refused |
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
 | `tempo` | `n` ticks per step, or `[a, b]`, steps alternating `a` and `b` (default 6); 0 is refused |
-| `hold` | per cell, the events its modulators hold on (see [Holds](#holds)); none by default |
+| `hold` | format 1.21's (see [Format 1.21](#format-121)); refused in `1.22` |
+| `slots` | per cell, its modulator slots (see [Slots](#slots)); refused before `1.22` |
 | `tables` | the tables expressions read as `T[k]` |
 | `init` | one event per voice (see [Init](#init)); a count other than `voices` is refused |
 
 ## Initial state
 
 Every register is 0, every cell (frequency, pulse width, cutoff, `ctrl`, the mask, the gate,
-`ad`, `sr`, `res`, `route`, `mode`, `vol`) is 0, no voice has a note, an instrument, a program or
-a modulator, and every voice's swing is at `a`.
+`ad`, `sr`, `res`, `route`, `mode`, `vol`) is 0, no voice has a note, an instrument or a
+program, every slot is unbound but where it has a default binding (see [Slots](#slots)), and
+every voice's swing is at `a`.
 
 ## Definitions
 
 Every `def` section of every row adds its names to one namespace for the whole song; a name
 defined twice, and a reference to a name never defined, is refused. A `pw` or `filter` record,
-and an instrument's `pw` or `filter` field, that is an expression is the program
-`[{pw: e}, end]` or `[{cut: e}, end]`. A program `{loop: k}` with `k` outside its rows is
-refused.
+and an instrument's `pw` or `filter` field, that is a binding (see [Bindings](#bindings)) is the
+program `[{pw: b}, end]` or `[{cut: b}, end]`; an instrument's several `pw` or `filter` fields
+are one such row binding each field's slot, and a program among them is refused. A program
+`{loop: k}` with `k` outside its rows is refused.
+
+A `mod` record is a template: an expression that may read parameters, lowercase names but `v`,
+`n`, a function's and a record's name (`x1`, `pw1`, `f1`, ...). An `x` record is an instance:
+an expression, or a template's name with the bag `{name: integer, ...}` naming each of its
+parameters and no other, which is the template with each parameter its integer. An expression
+outside a template that reads a parameter is refused.
 
 ## Time
 
@@ -95,12 +104,12 @@ the gate on and starts the voice's instrument, if it has one:
 - the control program restarts at its first row;
 - the pulse program restarts unless the event carries `!pw`, the filter program unless it
   carries `!filter`;
-- the frequency's program modulator becomes the instrument's `freq`, starting at φ = 0, or none;
-- the voice's `!freq` and `!pw` commands end, and the `!cut` command if this voice gave it.
+- each `freq` field binds its slot of the frequency, or with `none` ends its binding.
 
-An instrument field it leaves out leaves what it would set as it is, but for `freq`: without one
-the frequency is `F(N)`. A note with `!legato` sets only the event note: the gate, the rows'
-note, the programs, the modulators and the commands are untouched, and no restart runs.
+Every binding of the instrument's fields, its `pw` and `filter` fields' too, starts φ at 0. No
+other binding ends: an instrument field it leaves out leaves what it would set as it is. A
+note with `!legato` sets only the event note: the gate, the rows' note, the programs and the
+bindings are untouched, and no restart runs.
 
 ## Hard restart
 
@@ -108,7 +117,7 @@ A voice's restart program is the `restart` of its instrument as of the event (th
 `.iN`, else the voice's last). It is anchored to every event of the voice without `!legato`
 but a `-` without commands: its last row falls on the event's tick and each earlier row `i`
 `hold_i + wait_(i+1)` ticks before row `i + 1`, but for its first row, which falls on the step's
-`read` tick (see [Holds](#holds)) where the voice has an instrument as of the step before. The
+`read` tick (see [Events](#events)) where the voice has an instrument as of the step before. The
 rows before the last are its lookahead.
 
 A note runs the rows: each applies with its row meaning at its tick, before the voice's events
@@ -137,7 +146,8 @@ applies when its slot is next visited at or after that tick; the rows a visit fi
 order, so `hold: 0` runs the next row in the same tick; a visit that would apply one row twice is
 refused.
 
-A row's keys apply in grammar order; a key it leaves out changes nothing.
+A row's keys apply in grammar order, a cell's keys in the order written; a key it leaves out
+changes nothing.
 
 | key | meaning |
 |---|---|
@@ -147,8 +157,8 @@ A row's keys apply in grammar order; a key it leaves out changes nothing.
 | `note: +n`, `note: -n` | the relative note becomes `n`, clearing the absolute note |
 | `note: G#5` | the absolute note becomes that note |
 | `ad`, `sr` | the envelope byte |
-| `pw: e` | the voice's pulse modulator becomes `e` (see [Modulators](#modulators)) |
-| `cut: e` | the cutoff's modulator becomes `e`, reading this voice's `N` |
+| `pw: b`, `slot.pw: b` | binds the voice's pulse width slot to `b` (see [Bindings](#bindings)) |
+| `cut: b`, `slot.cut: b` | binds the cutoff's slot to `b`, reading this voice's notes |
 | `pw: none`, `cut: none`, `freq: none` | see [Stops](#stops) |
 | `pw: hold`, `cut: hold`, `freq: hold` | see [Stops](#stops) |
 | `res` | the resonance nibble, `$D417` bits 4-7 |
@@ -156,42 +166,67 @@ A row's keys apply in grammar order; a key it leaves out changes nothing.
 | `route: +`, `route: + m` | adds this voice's bit (`1 << (voice - 1)`) and `m` |
 | `route: '-'`, `route: '- m'` | removes them |
 | `mode` | `$D418` bits 4-7 become the value's bits 4-7 |
-| `freq: e` | the frequency's modulator becomes `e`; an integer `n` is `F(N) + n` |
+| `freq: b`, `slot.freq: b` | binds the voice's frequency slot to `b`; an integer `n` is `F(N) + n` |
 | `run: c3`, `run: pw2`, `run: f1` | starts that program at this tick in the control, pulse or filter slot |
 | `vol` | the volume, `$D418` bits 0-3 |
 
 Values wider than their field keep their low bits.
 
+## Slots
+
+`slots: {cell: {name: {mod: m, hold: [...], reset: [...]}, ...}, ...}` names, per cell (`freq`,
+`pw`, `cut`), its slots in firing order, each with its default binding `m` and the events it
+holds and resets on (see [Events](#events)), any of them left out. A cell left out has one
+slot, named after the cell, with neither. A cell that names a slot twice, and a `row.KEY` whose
+`KEY` is no row key, is refused.
+
+A slot with a default binding is bound to it at tick 0, before the `init` row: each voice's
+frequency and pulse width slots by that voice, the cutoff's by voice 1.
+
+## Bindings
+
+A slot is bound by a program row's key, an instrument's field or a command of its cell (see
+[Programs](#programs), [Notes](#notes), [Commands](#commands)); a `slot.` prefix names the slot,
+and a key without one binds the cell's first slot. A prefix naming no slot of the cell is
+refused. A binding names its modulator:
+
+| binding | modulator |
+|---|---|
+| `x3` | the instance `x3` |
+| `note` | the template `note`, which reads no parameter |
+| `porta {s: 3}` | the template `porta` with its bag, as an instance (not in a command) |
+| `v + 40`, `512` | the expression (not in a command, which takes an integer and an `x` name) |
+
+A command or a program row binding a slot to the modulator it is bound to (the same expression
+with the same parameters) keeps its φ; any other binding, a slot's first and a binding of a
+note's instrument's fields start φ at 0 on that tick. A binding lasts
+until its slot is bound again or stopped (see [Stops](#stops)). The voice that binds a slot of the
+cutoff is the voice whose notes and events it reads.
+
 ## Modulators
 
 A modulator `e` drives one cell: a voice's frequency (16 bits), a voice's pulse width (12 bits)
-or the one cutoff (11 bits). Each cell has a program modulator, set by program rows and
-instruments, and a command modulator, set by commands, which owns the cell while it is set. The
-owning modulator fires once per tick: `v' = e(v, φ, N)` wrapped to the cell's width, `v` the
-cell's value before the firing, then φ + 1, but on its cell's hold ticks (see [Holds](#holds)).
-A modulator starts with φ = 0 at the tick it is set and fires that tick,
-unless it holds. A modulator that does
-not own its cell does not fire and keeps its φ. A cell with no modulator holds its value, but
-the frequency, which is `F(N)` then unless a `hold` stopped it (see [Stops](#stops)).
+or the one cutoff (11 bits). Each tick, each cell's slots fire in their order. A bound slot first
+takes φ = 0 on its reset events, then, but on its hold events, fires
+`v' = e(v, φ, N, n)` wrapped to the cell's width, `v` the value the slot before it left (the
+cell's value for the first), then φ + 1. A held or unbound slot passes `v` through and its φ does
+not advance. The cell takes the last slot's value. A frequency with no bound slot is `F(N)`, but
+after a `hold` (see [Stops](#stops)); a pulse width or cutoff with none holds its value.
 
-Expressions are compiled by `unitracker_grammar.expr` with `zero=True`. They are Python
-integers: `//` and `%` are floored, and 0 when the divisor is 0; a
-comparison is 1 or 0; `F(k)` is `unitracker_grammar.frequency(k, clock_hz)`, 0 below C0 and
-where the word overflows; `T[k]` is 0 outside the table, and a table the document does not
+`N` is the sounding note and `n` the event note (see [Notes](#notes)), each 0 where the voice has
+none, of the voice that bound the slot. Expressions are compiled by `unitracker_grammar.expr`
+with `zero=True`. They are Python integers: `//` and `%` are floored, and 0 when the divisor is
+0; a comparison is 1 or 0; `F(k)` is `unitracker_grammar.frequency(k, clock_hz)`, 0 below C0
+and where the word overflows; `T[k]` is 0 outside the table, and a table the document does not
 define is refused.
 
-## Holds
+A shape (`mod:` of an instrument) drives the frequency in place of its slots from the note
+that arms it until a `!freq` binding or a `hold` of `freq`, holding as the first slot.
 
-`hold: {freq: [...], pw: [...], cut: [...]}` names, per cell, the events on which its owning
-modulator holds instead of firing; `ctrl.freq`, `ctrl.pw` and `ctrl.cut` name them for the
-modulators a control program's row sets, and `freq`, `pw` and `cut` for every other. On a hold
-tick φ does not advance and the cell takes the modulator's last firing again, with that firing's
-`v` and φ and the current `N`, so a closed form of `N` and φ follows a change of `N` and a
-modulator that reads `v` keeps its value. Before its first firing, a frequency modulator set on
-the tick a note without `!legato` starts takes its value at φ = -1 with the cell's `v`; every
-other keeps its cell's value. A shape (`mod:`) holds its tick `t` as a `freq` modulator. A
-voice's events hold its frequency and pulse width modulators; the cutoff's are those of the
-voice that set its modulator.
+## Events
+
+A slot's `hold` and `reset` events, and format 1.21's hold line, name ticks of the voice that
+bound the slot:
 
 | event | the ticks of a voice it names |
 |---|---|
@@ -201,9 +236,10 @@ voice that set its modulator.
 | `note` | the tick a note without `!legato` applies |
 | `legato` | the tick a note with `!legato` applies |
 | `row` | a tick a row of its control program that sets a key other than `ctrl` and `gate` applies (a restart's rows are not its control program's) |
+| `row.KEY` | a tick a row of its control program that sets `KEY` applies; `row.freq` a row binding any slot of `freq` |
 
-`e-k` is the tick `k` ticks before each tick of `e` (`row` takes no `-k`). The init row's events
-are none of these.
+`e-k` is the tick `k` ticks before each tick of `e` (`row` and `row.KEY` take no `-k`). The init
+row's events are none of these.
 
 ## Commands
 
@@ -213,49 +249,64 @@ A command applies from the step that carries it, after its note, in grammar orde
 |---|---|
 | `!run:c3`, `!run:pw2`, `!run:f1` | starts that program in the slot its prefix names; refused on a voice that has no instrument yet |
 | `!run:none` | stops the control slot |
-| `!pw:n`, `!pw:xN` | the pulse width's command modulator becomes `n` (a constant) or `xN` |
+| `!pw:n`, `!pw:xN`, `!slot.pw:...` | binds the pulse width's slot to `n` (a constant) or `xN` |
 | `!ad:n`, `!sr:n` | the envelope byte |
 | `!ctrl:n` | the control byte, as a row's `ctrl` |
 | `!resfilt:r/m` | `res` becomes `r` and `route` the mask `m` |
 | `!mode:n`, `!vol:n` | as the row keys |
-| `!cut:n`, `!cut:xN` | the cutoff's command modulator becomes `n` or `xN`, reading this voice's `N` |
+| `!cut:n`, `!cut:xN`, `!slot.cut:...` | binds the cutoff's slot to `n` or `xN`, reading this voice's notes |
 | `!pw:none`, `!cut:none`, `!freq:none` | see [Stops](#stops) |
 | `!pw:hold`, `!cut:hold`, `!freq:hold` | see [Stops](#stops) |
 | `!tempo:n`, `!tempo:a/b`, `!vtempo:...` | see [Time](#time) |
-| `!freq:n`, `!freq:+n`, `!freq:-n` | the frequency's command modulator becomes `F(N) + n` |
-| `!freq:xN` | ... becomes `xN` |
+| `!freq:n`, `!freq:+n`, `!freq:-n`, `!slot.freq:...` | binds the frequency's slot to `F(N) + n` |
+| `!freq:xN` | ... to `xN` |
 | `!legato` | see [Notes](#notes) |
 | `!pw`, `!filter` | the note keeps its pulse / filter program (see [Notes](#notes)) |
 | `*k` | the event lasts `k` steps |
 
-A command modulator lasts until a note starts an instrument on its voice (for `!cut`, the voice
-that gave it), another command of its key, or its `none` or `hold`.
+A command's binding lasts as any other (see [Bindings](#bindings)).
 
 ## Stops
 
-Each modulated cell, `freq`, `pw` and `cut`, takes the same two stops, as a row key and as a
-command; the cell's slot is the pulse slot for `pw`, the filter slot for `cut` and none for
-`freq`.
+Each modulated cell, `freq`, `pw` and `cut`, takes the same two stops, as a row key, as an
+instrument's `none` field and as a command; the cell's program slot is the pulse slot for `pw`,
+the filter slot for `cut` and none for `freq`.
 
 | stop | meaning |
 |---|---|
-| row `none` | ends the cell's program modulator; its command modulator, if set, still owns it |
-| command `none` | ends the cell's command modulator; its program modulator, if set, drives it again |
-| row `hold` | ends the cell's program modulator and stops the voice's slot of the cell |
-| command `hold` | ends the cell's command and program modulators and stops the voice's slot of the cell |
+| `none`, `slot.cell: none`, `!slot.cell:none` | ends the binding of the slot (its prefix's, else the first) |
+| `hold`, `!cell:hold` | ends the binding of every slot of the cell and stops the voice's program slot of the cell |
 
-A cell left with no modulator by `none` takes its default: `F(N)` for the frequency; the
-pulse width and the cutoff hold. After a `hold` every cell holds: the frequency is not `F(N)`
-until a note starts an instrument, a `freq` modulator is set or a `none` of `freq`; a `hold`
-of `freq` also ends the instrument's shape (`mod:`). The cutoff's stops end its modulators
-only where this voice set them.
+After a `hold` the frequency holds: it is not `F(N)` until a note starts an instrument, a `freq`
+slot is bound or a `none` of `freq`; a `hold` of `freq` also ends the instrument's shape. The
+cutoff's stops end its bindings only where this voice bound them, and a filter program a voice
+starts ends the cutoff bindings the other voices' rows made.
 
-## Format 1.20
+## Format 1.21
+
+A `1.21` document has no `slots` line, slot prefix, `mod` record or template binding; its
+`hold` line names, per cell, the events its modulators hold on, `ctrl.freq`, `ctrl.pw` and
+`ctrl.cut` those a control program's row binds and `freq`, `pw` and `cut` every other. Each cell
+has two slots: a program slot, bound by rows and instruments, and a command slot, bound by
+commands. While the command slot is bound it owns the cell, else the program slot does; only
+the owner fires, and an owner on a hold tick takes its last firing again, with that firing's
+`v` and φ and the current `N`, so a closed form of `N` and φ follows a change of `N` and a
+modulator that reads `v` keeps its value. Before its first firing, a frequency modulator bound
+on the tick a note without `!legato` starts takes its value at φ = -1 with the cell's `v`;
+every other keeps its cell's value. Every binding starts φ at 0.
+
+A note that starts an instrument binds the frequency's program slot to the instrument's `freq`,
+or unbinds it, and ends the voice's command bindings, and the cutoff's where this voice made it.
+A row's `none` ends the program slot's binding and a command's the command slot's; a row's
+`hold` ends the program slot's and a command's both, each also stopping the voice's program
+slot of the cell. Slot defaults, reset events and the order of slots do not apply.
+
+### Format 1.20
 
 A `1.20` document plays as `1.21` but for two spellings: its `pw: none` and `!pw:none` are
 `1.21`'s `pw: hold` and `!pw:hold`, and its `filter: none` and `!filter:none` `1.21`'s
-`cut: hold` and `!cut:hold`. A `1.21` document's `filter: none` and `!filter:none` are
-refused.
+`cut: hold` and `!cut:hold`. A `1.21` or `1.22` document's `filter: none` and `!filter:none`
+are refused.
 
 ## Order within a tick
 
@@ -264,8 +315,8 @@ refused.
 2. Programs: every voice's control slot, then every pulse slot, then every filter slot, each in
    voice order. A program started in a slot already visited this tick applies its rows from the
    next tick.
-3. Modulators: every voice's frequency, then every pulse width, then the cutoff, each firing or
-   holding (a `row` hold is a control-program row this tick's step 2 applied).
+3. Modulators: every voice's frequency, then every pulse width, then the cutoff, each its slots
+   in order (a `row` or `row.KEY` event is a control-program row this tick's step 2 applied).
 4. Registers.
 
 ## Registers

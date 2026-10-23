@@ -20,7 +20,6 @@ from unitracker_player.player import (
 from unitracker_player.qperiod import period
 
 PASSES = 1024
-MODS = ("freq_prog", "freq_cmd", "pw_prog", "pw_cmd")
 
 
 class RenderError(PlayError):
@@ -92,8 +91,8 @@ def _freeze(obj, t: int):
 def _voice(voice: _Voice, t: int, periods: _Periods) -> tuple:
     state = dict(vars(voice))
     state["slots"] = [[p, i, due - t if p is not None else 0] for p, i, due in voice.slots]
-    for name in MODS:
-        state[name] = periods.mod(state[name])
+    for name in ("freq_mods", "pw_mods"):
+        state[name] = [periods.mod(m) for m in state[name]]
     osc = voice.osc
     if osc is not None and osc[0] is SHAPES["set"]:
         state["osc"] = [*osc[:2], 0, *osc[3:-1], osc[-1] and (osc[-1][0], 0)]
@@ -120,7 +119,7 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
         for d in (player._events, player._lookahead)  # pylint: disable=protected-access
     ]
     globals_ = (player.cut, player.res, player.route, player.mode, player.vol)
-    mods = (periods.mod(player.cut_prog), periods.mod(player.cut_cmd))
+    mods = tuple(periods.mod(m) for m in player.cut_mods)
     voices = tuple(_voice(v, t, periods) for v in player.voices)
     ins = player._ins  # pylint: disable=protected-access
     held = {k: {x - t for x in v} for k, v in player._held.items() if v}  # pylint: disable=W0212
