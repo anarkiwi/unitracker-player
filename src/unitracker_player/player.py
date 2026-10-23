@@ -517,6 +517,10 @@ class Player:  # pylint: disable=too-many-instance-attributes
 
     def _start(self, v: int, kind: int, prog: CProgram | None, t: int):
         running = prog is not None and bool(prog.rows)
+        if running and kind == FILTER:
+            for other in range(len(self.voices)):
+                if other != v:
+                    self._stop_filter(other)
         self.voices[v].slots[kind] = [prog, 0, t + prog.rows[0][0]] if running else [None, 0, 0]
 
     def _stop_pulse(self, v: int):

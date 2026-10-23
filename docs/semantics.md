@@ -125,13 +125,15 @@ ending is ignored.
 
 ## Programs
 
-Each voice has three slots: control, pulse and filter. A program started at tick `s` applies
-its first row at `s + wait`; each next row at the tick the previous row applied plus its `hold`
-plus the row's `wait`; `hold` is 1 and `wait` 0 when left out. After its last row `end` stops
-the slot, leaving every cell as it is, and `{loop: k}` continues at row `k`, whose `wait`
-applies. A program of no rows stops the slot at once. A row due at a tick applies when its slot
-is next visited at or after that tick; the rows a visit finds due apply in order, so `hold: 0`
-runs the next row in the same tick; a visit that would apply one row twice is refused.
+Each voice has three slots: control, pulse and filter; the filter runs one program, so a filter
+program a voice starts stops every other voice's filter slot, as `!filter:none` there would. A
+program started at tick `s` applies its first row at `s + wait`; each next row at the tick the
+previous row applied plus its `hold` plus the row's `wait`; `hold` is 1 and `wait` 0 when left out.
+After its last row `end` stops the slot, leaving every cell as it is, and `{loop: k}` continues at
+row `k`, whose `wait` applies. A program of no rows stops the slot at once. A row due at a tick
+applies when its slot is next visited at or after that tick; the rows a visit finds due apply in
+order, so `hold: 0` runs the next row in the same tick; a visit that would apply one row twice is
+refused.
 
 A row's keys apply in grammar order; a key it leaves out changes nothing.
 
