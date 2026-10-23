@@ -1,5 +1,6 @@
 """The player's register state per tick, derived by hand from docs/semantics.md."""
 
+import numpy as np
 import pytest
 from song import I1, cutoff, doc, freq, pulse, reg, timeline
 from unitracker_grammar import frequency as F
@@ -305,6 +306,16 @@ CASES = {
         freq,
         [F(48) + (5 if t < 10 else 50) for t in R24],
     ),
+    "freq-row-none-returns-to-the-note": (
+        doc(ins="{ctrl: [{ctrl: 65, freq: F(N) + φ}, {wait: 2, freq: none}, end]}"),
+        freq,
+        [F(48) + (t if t < 3 else 0) for t in R24],
+    ),
+    "freq-row-hold": (
+        doc(ins="{ctrl: [{ctrl: 65, freq: F(N) + φ}, {wait: 2, freq: hold}, end]}"),
+        freq,
+        [F(48) + min(t, 2) for t in R24],
+    ),
     "freq-wraps-16-bits": (doc(ins="{freq: F(N) + 65539}"), freq, [F(48) + 3] * 24),
     "pw-x-persists": (
         doc(phrase="[C4.i1, -!pw:x1, -, D4]", x={"x1": "v + 100"}),
@@ -319,10 +330,15 @@ CASES = {
             for t in R24
         ],
     ),
-    "pw-none": (
-        doc(ins="{pw: v + 100}", phrase="[C4.i1, -!pw:none, -*2]"),
+    "pw-hold": (
+        doc(ins="{pw: v + 100}", phrase="[C4.i1, -!pw:hold, -*2]"),
         pulse,
         [100 * (min(t, 5) + 1) for t in R24],
+    ),
+    "pw-none-returns-to-the-program-modulator": (
+        doc(ins="{pw: v + 100}", phrase="[C4.i1!pw:7, -!pw:none, -*2]"),
+        pulse,
+        [7 + 100 * max(t - 5, 0) for t in R24],
     ),
     "pw-keep": (
         doc(ins="{pw: 100*φ + 1}", phrase="[C4.i1, D4!pw, -*2]"),
@@ -334,10 +350,15 @@ CASES = {
         pulse,
         [100 * (t if t < 6 else t - 6) + 1 for t in R24],
     ),
-    "pw-row-none": (
-        doc(ins="{pw: [{pw: v + 100}, {wait: 2, pw: none}, end]}"),
+    "pw-row-hold": (
+        doc(ins="{pw: [{pw: v + 100}, {wait: 2, pw: hold}, {wait: 2, pw: v + 1}, end]}"),
         pulse,
         [100 * (min(t, 2) + 1) for t in R24],
+    ),
+    "pw-row-none-keeps-the-slot": (
+        doc(ins="{pw: [{pw: v + 100}, {wait: 2, pw: none}, {wait: 2, pw: v + 1}, end]}"),
+        pulse,
+        [100 * (min(t, 2) + 1) + max(t - 5, 0) for t in R24],
     ),
     "pw-from-ctrl-row": (
         doc(ins="{ctrl: [{ctrl: 65, pw: 100*φ + 50}, end]}"),
@@ -360,23 +381,33 @@ CASES = {
         cutoff,
         [1000 * (t + 1) % 2048 for t in R24],
     ),
-    "cut-row-none": (
-        doc(ins="{filter: [{cut: v + 100}, {wait: 2, filter: none}, end]}"),
+    "cut-row-hold": (
+        doc(ins="{filter: [{cut: v + 100}, {wait: 2, cut: hold}, {wait: 2, cut: v + 1}, end]}"),
         cutoff,
         [100 * (min(t, 2) + 1) for t in R24],
     ),
-    "cut-command-none": (
-        doc(ins="{filter: v + 100}", phrase="[C4.i1, -!filter:none, -*2]"),
+    "cut-row-none-keeps-the-slot": (
+        doc(ins="{filter: [{cut: v + 100}, {wait: 2, cut: none}, {wait: 2, cut: v + 1}, end]}"),
+        cutoff,
+        [100 * (min(t, 2) + 1) + max(t - 5, 0) for t in R24],
+    ),
+    "cut-command-hold": (
+        doc(ins="{filter: v + 100}", phrase="[C4.i1, -!cut:hold, -*2]"),
         cutoff,
         [100 * (min(t, 5) + 1) for t in R24],
+    ),
+    "cut-none-returns-to-the-program-modulator": (
+        doc(ins="{filter: v + 100}", phrase="[C4.i1!cut:7, -!cut:none, -*2]"),
+        cutoff,
+        [7 + 100 * max(t - 5, 0) for t in R24],
     ),
     "cut-x-ends-at-note": (
         doc(phrase="[C4.i1!cut:x1, -, D4, -]", x={"x1": "v + 50"}),
         cutoff,
         [50 * (min(t, 11) + 1) for t in R24],
     ),
-    "cut-x-filter-none": (
-        doc(phrase="[C4.i1!cut:x1, -!filter:none, -*2]", x={"x1": "v + 100"}),
+    "cut-x-hold": (
+        doc(phrase="[C4.i1!cut:x1, -!cut:hold, -*2]", x={"x1": "v + 100"}),
         cutoff,
         [100 * (min(t, 5) + 1) for t in R24],
     ),
@@ -490,6 +521,23 @@ def test_cells_rows_and_commands(text, read, expected):
 
 
 @pytest.mark.parametrize(
+    "old, new",
+    [
+        (doc(ins="{pw: v + 100}", phrase="[C4.i1!pw:7, -!pw:none, -*2]"), "-!pw:hold"),
+        (doc(ins="{pw: [{pw: v + 9}, {wait: 2, pw: none}, {pw: v + 1}, end]}"), "pw: hold"),
+        (doc(ins="{filter: v + 100}", phrase="[C4.i1!cut:7, -!filter:none, -*2]"), "-!cut:hold"),
+        (doc(ins="{filter: [{cut: v + 9}, {wait: 2, filter: none}, end]}"), "cut: hold"),
+    ],
+)
+def test_a_1_20_document_plays_its_pw_none_and_filter_none_as_hold(old, new):
+    """Format 1.20's ``pw: none`` and ``filter: none`` are 1.21's ``pw: hold`` and
+    ``cut: hold``."""
+    spelled = old.replace("-!filter:none", new).replace("-!pw:none", new)
+    spelled = spelled.replace("filter: none", new).replace("pw: none", new)
+    assert np.array_equal(play(old.replace("1.21", "1.20")), play(spelled))
+
+
+@pytest.mark.parametrize(
     "expr, value",
     [
         ("7 // 2 + 7 % 3 + (5 > 3) + abs(-9) + min(4, 8) + max(4, 8)", 26),
@@ -562,7 +610,9 @@ def _twice(text: str) -> str:
 @pytest.mark.parametrize(
     "text, match",
     [
-        (doc().replace("1.20", "1.21"), "version"),
+        (doc().replace("1.21", "1.22"), "version"),
+        (doc(ins="{filter: [{cut: 9}, {filter: none}, end]}"), "spelling of cut: hold"),
+        (doc("[C4.i1!filter:none, -*3]"), "spelling of cut: hold"),
         (doc(head="voices: 4\n", rows=("[p1, p1, p1, p1]",)), "voices"),
         (doc(head="voices: 2\n"), "play entries"),
         (doc(head="init: [-, -]\n"), "init"),
@@ -595,6 +645,8 @@ def _twice(text: str) -> str:
     ],
     ids=[
         "version",
+        "row-filter-none",
+        "command-filter-none",
         "voices",
         "entries",
         "init",

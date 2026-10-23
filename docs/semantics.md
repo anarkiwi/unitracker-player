@@ -8,7 +8,7 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 
 | line | meaning |
 |---|---|
-| `unitracker` | `1.20`; any other version is refused |
+| `unitracker` | `1.21`, or `1.20` (see [Format 1.20](#format-120)); any other version is refused |
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
@@ -144,8 +144,9 @@ A row's keys apply in grammar order; a key it leaves out changes nothing.
 | `note: G#5` | the absolute note becomes that note |
 | `ad`, `sr` | the envelope byte |
 | `pw: e` | the voice's pulse modulator becomes `e` (see [Modulators](#modulators)) |
-| `pw: none` | stops the voice's pulse slot and its pulse modulator; the pulse width holds |
 | `cut: e` | the cutoff's modulator becomes `e`, reading this voice's `N` |
+| `pw: none`, `cut: none`, `freq: none` | see [Stops](#stops) |
+| `pw: hold`, `cut: hold`, `freq: hold` | see [Stops](#stops) |
 | `res` | the resonance nibble, `$D417` bits 4-7 |
 | `route: m` | the routing, `$D417` bits 0-3, becomes `m` |
 | `route: +`, `route: + m` | adds this voice's bit (`1 << (voice - 1)`) and `m` |
@@ -153,7 +154,6 @@ A row's keys apply in grammar order; a key it leaves out changes nothing.
 | `mode` | `$D418` bits 4-7 become the value's bits 4-7 |
 | `freq: e` | the frequency's modulator becomes `e`; an integer `n` is `F(N) + n` |
 | `run: c3`, `run: pw2`, `run: f1` | starts that program at this tick in the control, pulse or filter slot |
-| `filter: none` | stops the voice's filter slot, and the cutoff's modulator if this voice started it; the cutoff holds |
 | `vol` | the volume, `$D418` bits 0-3 |
 
 Values wider than their field keep their low bits.
@@ -168,7 +168,7 @@ cell's value before the firing, then φ + 1, but on its cell's hold ticks (see [
 A modulator starts with φ = 0 at the tick it is set and fires that tick,
 unless it holds. A modulator that does
 not own its cell does not fire and keeps its φ. A cell with no modulator holds its value, but
-the frequency, which is `F(N)` then unless `!freq:hold` stopped it.
+the frequency, which is `F(N)` then unless a `hold` stopped it (see [Stops](#stops)).
 
 Expressions are compiled by `unitracker_grammar.expr` with `zero=True`. They are Python
 integers: `//` and `%` are floored, and 0 when the divisor is 0; a
@@ -210,24 +210,48 @@ A command applies from the step that carries it, after its note, in grammar orde
 | `!run:c3`, `!run:pw2`, `!run:f1` | starts that program in the slot its prefix names; refused on a voice that has no instrument yet |
 | `!run:none` | stops the control slot |
 | `!pw:n`, `!pw:xN` | the pulse width's command modulator becomes `n` (a constant) or `xN` |
-| `!pw:none` | ends `!pw`, stops the pulse slot and the pulse modulator; the pulse width holds |
-| `!filter:none` | stops the filter slot; ends this voice's `!cut` and the cutoff's program modulator if this voice started it; the cutoff holds |
 | `!ad:n`, `!sr:n` | the envelope byte |
 | `!ctrl:n` | the control byte, as a row's `ctrl` |
 | `!resfilt:r/m` | `res` becomes `r` and `route` the mask `m` |
 | `!mode:n`, `!vol:n` | as the row keys |
 | `!cut:n`, `!cut:xN` | the cutoff's command modulator becomes `n` or `xN`, reading this voice's `N` |
+| `!pw:none`, `!cut:none`, `!freq:none` | see [Stops](#stops) |
+| `!pw:hold`, `!cut:hold`, `!freq:hold` | see [Stops](#stops) |
 | `!tempo:n`, `!tempo:a/b`, `!vtempo:...` | see [Time](#time) |
 | `!freq:n`, `!freq:+n`, `!freq:-n` | the frequency's command modulator becomes `F(N) + n` |
 | `!freq:xN` | ... becomes `xN` |
-| `!freq:none` | ends `!freq`; the frequency's program modulator, or `F(N)`, drives it again |
-| `!freq:hold` | ends `!freq` and the frequency's program modulator; nothing drives the frequency, which holds, until a note starts an instrument, a row sets `freq` or another `!freq` |
 | `!legato` | see [Notes](#notes) |
 | `!pw`, `!filter` | the note keeps its pulse / filter program (see [Notes](#notes)) |
 | `*k` | the event lasts `k` steps |
 
 A command modulator lasts until a note starts an instrument on its voice (for `!cut`, the voice
-that gave it), another command of its key, or its `none`.
+that gave it), another command of its key, or its `none` or `hold`.
+
+## Stops
+
+Each modulated cell, `freq`, `pw` and `cut`, takes the same two stops, as a row key and as a
+command; the cell's slot is the pulse slot for `pw`, the filter slot for `cut` and none for
+`freq`.
+
+| stop | meaning |
+|---|---|
+| row `none` | ends the cell's program modulator; its command modulator, if set, still owns it |
+| command `none` | ends the cell's command modulator; its program modulator, if set, drives it again |
+| row `hold` | ends the cell's program modulator and stops the voice's slot of the cell |
+| command `hold` | ends the cell's command and program modulators and stops the voice's slot of the cell |
+
+A cell left with no modulator by `none` takes its default: `F(N)` for the frequency; the
+pulse width and the cutoff hold. After a `hold` every cell holds: the frequency is not `F(N)`
+until a note starts an instrument, a `freq` modulator is set or a `none` of `freq`; a `hold`
+of `freq` also ends the instrument's shape (`mod:`). The cutoff's stops end its modulators
+only where this voice set them.
+
+## Format 1.20
+
+A `1.20` document plays as `1.21` but for two spellings: its `pw: none` and `!pw:none` are
+`1.21`'s `pw: hold` and `!pw:hold`, and its `filter: none` and `!filter:none` `1.21`'s
+`cut: hold` and `!cut:hold`. A `1.21` document's `filter: none` and `!filter:none` are
+refused.
 
 ## Order within a tick
 

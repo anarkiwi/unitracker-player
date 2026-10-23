@@ -13,11 +13,13 @@ from unitracker_player.document import HOLD, Document, Expr, Program, note_numbe
 from unitracker_player.expr import compile_expr, constant, note_table, offset
 from unitracker_player.modulation import SHAPES
 
-VERSION = "1.20"
+VERSION = "1.21"
+LEGACY = "1.20"
 MAX_VOICES = 3
 REGISTERS = 25
 ENVELOPE = ("ad", "sr")
-CHIP = ("cut", "resfilt", "mode", "vol", "filter")
+CHIP = ("cut", "resfilt", "mode", "vol")
+CELLS = ("pw", "cut", "freq")
 CONTROL, PULSE, FILTER = range(3)
 FREQ_MASK, PW_MASK, CUT_MASK = 0xFFFF, 0xFFF, 0x7FF
 
@@ -94,6 +96,16 @@ def _slot(name: str) -> int:
     return PULSE if name.startswith("pw") else CONTROL if name.startswith("c") else FILTER
 
 
+def _spelled(key: str, value, legacy: bool) -> tuple:
+    """A row key or command in the current format's spelling: format 1.20's ``pw: none`` is
+    ``pw: hold`` and its ``filter: none`` ``cut: hold``, which 1.21 alone spells."""
+    if key == "filter":
+        if not legacy:
+            raise PlayError(f"filter: none is {LEGACY}'s spelling of cut: hold")
+        return "cut", HOLD
+    return key, HOLD if legacy and key == "pw" and value is None else value
+
+
 class _Compiler:
     """Resolves a Document's names and compiles its programs, instruments and expressions, each
     once; each method compiles the construct of its name."""
@@ -102,6 +114,7 @@ class _Compiler:
 
     def __init__(self, doc: Document, table):
         self.doc, self.table = doc, table
+        self.legacy = doc.header.version == LEGACY
         self.memo: dict = {}
 
     def fn(self, expr: Expr, freq: bool = False):
@@ -140,7 +153,8 @@ class _Compiler:
     def ops(self, keys) -> tuple:
         out = []
         for key, value in keys:
-            if key in ("pw", "cut", "freq") and value is not None:
+            key, value = _spelled(key, value, self.legacy)
+            if key in CELLS and value not in (None, HOLD):
                 value = self.fn(value, freq=key == "freq")
             elif key == "run":
                 value = (_slot(value), self.program(value))
@@ -196,9 +210,10 @@ class _Compiler:
         cmds = dict(event.commands)
         ops = []
         for key, value in event.commands:
+            key, value = _spelled(key, value, self.legacy)
             if key == "run":
                 value = None if value is None else (_slot(value), self.program(value))
-            elif key in ("pw", "cut", "freq") and value != HOLD:
+            elif key in CELLS and value not in (None, HOLD):
                 value = self.expression(value, key == "freq")
             elif key in ("tempo", "vtempo", "legato"):
                 continue
@@ -238,8 +253,8 @@ def compile_document(doc: Document, compiler=None) -> Song:
     """The Song of a Document: every name resolved and every expression compiled once, by
     ``compiler``, a ``_Compiler`` subclass when given."""
     head = doc.header
-    if head.version != VERSION:
-        raise PlayError(f"version {head.version}: the player reads {VERSION}")
+    if head.version not in (LEGACY, VERSION):
+        raise PlayError(f"version {head.version}: the player reads {LEGACY} and {VERSION}")
     if not 1 <= head.voices <= MAX_VOICES:
         raise PlayError(f"voices: {head.voices}: the player plays 1 to {MAX_VOICES} voices")
     clock_hz = head.clock_hz or PAL_HZ
@@ -513,6 +528,24 @@ class Player:  # pylint: disable=too-many-instance-attributes
         if self.cut_prog and self.cut_prog[2] == v:
             self.cut_prog = None
 
+    def _stop(self, v: int, key: str, value, command: bool):
+        """Cell ``key``'s ``none`` or ``hold``, a command's or a row's: ``none`` ends the
+        modulator of its level, ``hold`` also the program modulator and the cell's slot; the
+        cutoff's only where voice ``v`` set them."""
+        voice = self.voices[v]
+        level = "_cmd" if command else "_prog"
+        if key != "cut":
+            setattr(voice, key + level, None)
+        elif (mod := getattr(self, key + level)) and mod[2] == v:
+            setattr(self, key + level, None)
+        if value == HOLD:
+            if key == "freq":
+                voice.freq_prog = voice.osc = None
+            else:
+                (self._stop_pulse if key == "pw" else self._stop_filter)(v)
+        if key == "freq":
+            voice.freq_hold = value == HOLD
+
     def _run_slot(self, v: int, kind: int, t: int):
         slots, seen = self.voices[v].slots, set()
         while (slot := slots[kind])[0] is not None and slot[2] <= t:
@@ -561,11 +594,10 @@ class Player:  # pylint: disable=too-many-instance-attributes
                     voice.absolute = value[1]
             elif key in ("ad", "sr"):
                 setattr(voice, key, value & 0xFF)
+            elif key in CELLS and value in (None, HOLD):
+                self._stop(v, key, value, False)
             elif key == "pw":
-                if value is None:
-                    self._stop_pulse(v)
-                else:
-                    voice.pw_prog = [value, 0, held + "pw", None, None]
+                voice.pw_prog = [value, 0, held + "pw", None, None]
             elif key == "cut":
                 self.cut_prog = [value, 0, v, held + "cut", None, None]
             elif key == "freq":
@@ -573,8 +605,6 @@ class Player:  # pylint: disable=too-many-instance-attributes
                 voice.freq_hold = False
             elif key == "run":
                 self._start(v, value[0], value[1], t)
-            elif key == "filter":
-                self._stop_filter(v)
             else:
                 self._global(v, key, value)
 
@@ -641,14 +671,10 @@ class Player:  # pylint: disable=too-many-instance-attributes
                 voice.slots[CONTROL][0] = None
             else:
                 self._start(v, value[0], value[1], t)
+        elif key in CELLS and value in (None, HOLD):
+            self._stop(v, key, value, True)
         elif key == "pw":
-            voice.pw_cmd = None if value is None else [value, 0, "pw", None, None]
-            if value is None:
-                self._stop_pulse(v)
-        elif key == "filter":
-            self._stop_filter(v)
-            if self.cut_cmd and self.cut_cmd[2] == v:
-                self.cut_cmd = None
+            voice.pw_cmd = [value, 0, "pw", None, None]
         elif key in ("ad", "sr"):
             setattr(voice, key, value & 0xFF)
         elif key == "ctrl":
@@ -658,14 +684,8 @@ class Player:  # pylint: disable=too-many-instance-attributes
         elif key == "cut":
             self.cut_cmd = [value, 0, v, "cut", None, None]
         elif key == "freq":
-            voice.freq_hold = value == HOLD
-            voice.freq_cmd = (
-                None if value in (None, HOLD) else [value, 0, "freq", self._before(v, t), None]
-            )
-            if voice.freq_hold:
-                voice.freq_prog = None
-            if value is not None:
-                voice.osc = None
+            voice.freq_hold, voice.osc = False, None
+            voice.freq_cmd = [value, 0, "freq", self._before(v, t), None]
         elif key == "set":
             if voice.osc is None:
                 raise PlayError(f"voice {v + 1}: !set at tick {t} with no frequency modulator")

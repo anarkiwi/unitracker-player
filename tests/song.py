@@ -5,7 +5,7 @@ import re
 import numpy as np
 from unitracker_grammar import parse
 
-HEAD = "unitracker: 1.20\nmeta: {title: T}\n"
+HEAD = "unitracker: 1.21\nmeta: {title: T}\n"
 SECTIONS = ("restart", "ins", "ctrl", "pw", "filter", "x", "phrase")
 I1 = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end]}"
 
