@@ -563,15 +563,16 @@ def test_cells_rows_and_commands(text, read, expected):
         ("-7 // 2 + 20", 16),
         ("-7 % 3", 2),
         ("-(3 - 5)*4", 8),
-        ("F(-1) + F(1000) + 1", 1),
+        ("F(-110) + F(1000) + 1", 1),
+        ("F(-12) - F(0) // 2", 0),
         ("F(N) - F(48) + N", 48),
         ("W[1] + W[9] + W[-1]", 6),
         ("v - 1", 4095),
     ],
 )
 def test_expressions_are_floored_python_integers(expr, value):
-    """`//` and `%` floor and give 0 for a 0 divisor, comparisons are 1 or 0, F is 0 outside its
-    table, T[k] is 0 outside the list and the result wraps to the cell."""
+    """`//` and `%` floor and give 0 for a 0 divisor, comparisons are 1 or 0, F is 0 where its
+    word rounds to 0 or overflows, T[k] is 0 outside the list and the result wraps to the cell."""
     text = doc(f"[C4.i1!pw:'{expr}', -*3]", head="tables:\n  W: [5, 6, 7]\n")
     assert pulse(play(text))[0] == value
 

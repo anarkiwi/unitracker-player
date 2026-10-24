@@ -196,20 +196,38 @@ def test_immediates_take_a_parameter_s_low_and_high_bytes():
 
 
 def test_the_note_table_is_laid_out_once_before_the_first_routine_naming_it():
-    """F.lo then F.hi, entry k F(k) at the machine's clock for k 0-255, only once named."""
+    """F.lo then F.hi, each entry k F(k) at the machine's clock for k 0-255 after k -128 to -1,
+    only once named."""
     machine = Machine(T1, {}, 985000)
     routine("rts", machine)
     assert "F.lo" not in machine.symbols
     read_hi = routine("ldx #57\nlda F.hi,x\nsta v\nrts", machine)
     lo = machine.symbols["F.lo"]
-    assert machine.symbols["F.hi"] == lo + 256 and lo == read_hi.start - 512
-    words = [frequency(k, 985000) for k in range(256)]
-    assert bytes(machine.image[lo : lo + 512]) == bytes(
+    assert machine.symbols["F.hi"] == lo + 384 and lo == read_hi.start - 768 + 128
+    words = [frequency(k, 985000) for k in range(-128, 256)]
+    assert bytes(machine.image[lo - 128 : lo + 640]) == bytes(
         [w & 0xFF for w in words] + [w >> 8 for w in words]
     )
-    assert read_hi(0, 0, 0, 0, bytearray()) == words[57] >> 8
+    assert read_hi(0, 0, 0, 0, bytearray()) == words[128 + 57] >> 8
     routine("lda F.lo\nsta v\nrts", machine)
     assert machine.symbols["F.lo"] == lo
+
+
+@pytest.mark.parametrize("y", [0, 23, 24, 100, 255])
+def test_a_negative_offset_reads_the_notes_below_c0(y):
+    """F.lo-24,y and F.hi-24,y read F(y - 24), the notes below C0 laid out before entry 0."""
+    src = f"ldy #{y}\nlda F.lo-24,y\nsta v\nlda F.hi-24,y\nsta v+1\nrts"
+    assert fire(src) == frequency(y - 24) and fire("lda F.lo-128\nsta v\nrts") == 0
+
+
+@pytest.mark.parametrize(
+    "src, tables",
+    [("lda F.lo-129\nrts", {}), ("lda T.hi-1,y\nrts", T1), ("lda T.lo-200,y\nrts", T1)],
+)
+def test_a_negative_offset_before_a_table_is_refused(src, tables):
+    """A document table has nothing before entry 0; F has its 128 notes below C0."""
+    with pytest.raises(PlayError, match="is before the table"):
+        routine(src, tables=tables)
 
 
 def test_a_note_table_past_memory_is_refused():

@@ -278,7 +278,7 @@ none, of the voice that bound the slot. Expressions are compiled by `unitracker_
 with `zero=True`. They are Python integers: `//` and `%` are floored, and 0 when the divisor is
 0; a comparison is 1 or 0; `F(k)` is `unitracker_grammar.frequency(k, clock_hz, rounding)`,
 `R(440 * 2**((k - 57)/12) * 2**24 / clock_hz)` with `R` the clock's `rounding`, to the nearest
-word (`round`, the default) or down (`floor`), 0 below C0 and where the word overflows; `T[k]` is 0 outside the table, and a table the document does not
+word (`round`, the default) or down (`floor`), for every note, below C0 too, and 0 where the word rounds to 0 or overflows; `T[k]` is 0 outside the table, and a table the document does not
 define is refused.
 
 ## Code modulators
@@ -298,8 +298,8 @@ across firings, slots, bindings and notes; phi restarts as for any modulator, th
 | `phi` | 2 | phi mod 65536 | discarded |
 | `nn`, `ne` | 1 each | `N & 255`, `n & 255` | discarded |
 | a state variable of the slot's cell | its size | the voice's copy | stored back to it |
-| `T.lo`, `T.hi` | per entry | bits 0-7, 8-15 of entry `k` at `+k`; 0 past the table | discarded |
-| `F.lo`, `F.hi` | 256 each | bits 0-7, 8-15 of `F(k)` at `clock_hz` and `rounding` at `+k`, `unitracker_grammar.frequency(k, clock_hz, rounding)` for k 0-255 | discarded |
+| `T.lo`, `T.hi` | per entry | bits 0-7, 8-15 of entry `k` at `+k`; 0 past the table; nothing before entry 0, so a negative offset is refused | discarded |
+| `F.lo`, `F.hi` | 384 each | bits 0-7, 8-15 of `F(k)` at `clock_hz` and `rounding` at `+k`, `unitracker_grammar.frequency(k, clock_hz, rounding)` for k -128-255 (k < 0 at `-1` to `-128`, laid out before entry 0: `F.lo-24,y` reads `F(y - 24)`) | discarded |
 
 At entry A, X and Y are 0, the flags are clear but I and the stack is empty. The routine runs
 from its first statement to an `rts` on an empty stack; every other write is discarded at exit.
@@ -307,7 +307,8 @@ The player lays `v`, `phi`, `nn`, `ne` and the state in zero page, then the tabl
 in one 64K memory per song (the note table `F` as a table before the first routine that names
 it, and only then), and picks zero page or absolute for each memory operand. Refused: a
 symbol that is none of these or a state variable of another cell than the binding's, a branch out
-of range, more than 4096 instructions in a
+of range, a negative offset reaching before a table's first byte (a document table's entry 0,
+`F`'s k = -128), more than 4096 instructions in a
 firing (the last `rts` among them), a pull or `rts` on an empty stack, a 257th byte pushed, and
 running outside the routine's code. A looping song with a code modulator has no proved loop:
 `unitracker-sid` needs `--ticks` for it.
