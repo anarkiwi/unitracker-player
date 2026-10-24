@@ -61,6 +61,27 @@ format `1.23`'s, which reads no parameter) or, in a command or a slot's default,
 expression (`!pw:'v + 40'`). An anonymous body is assembled once per text and cell, and binding
 the same text again keeps its φ as the same call does.
 
+In `1.23` a `restart`, `ctrl`, `pw` or `filter` record may be a program template, keyed by its
+signature (`arp(a, b)`, `hr(h, ad, sr)`, `pt()`): its parameters are distinct lowercase names,
+none `v`, `n`, `none`, `hold` nor a record's name, and exactly the names its rows read. A row
+reads a parameter where it takes an integer (`wait`, `hold`, `ctrl`, `gate`, `ad`, `sr`, `res`,
+`route: m`, `mode`, `vol`, but never a `{loop: k}`), as a relative note (`note: +a` adds its
+value, `note: -a` subtracts it), as a cell value alone (`pw: b`, `cut: c`, `freq: f`) and as a
+call's argument (`pw: walk(b)`, `run: pt(b)`); a parameter inside a larger expression, in an
+inline program, in a named program or anywhere outside a template's records is refused. A call,
+`name(1,-2)`, binds a program template wherever a program's name stands: an instrument's `ctrl`,
+`pw`, `filter` and `restart` fields (`ctrl: arp(7,4)`, `restart: hr(2,9,220)`), a `pw` or
+`filter` record (`pw1: pt(40)`), and a row's `run:` and a `!run:`, bare (`run: arp(7,4)`, the
+template's section giving its kind) or after its kind (`run: ctrl:arp(7,4)`,
+`!run:pw:pt(9)`), which must be the template's. The call is exactly the template's program with
+each parameter its argument; an argument wider than its field keeps its low bits as a literal
+would, and a negative `wait` or `hold` is refused. In a `pw` or `filter` field a call of a
+modulator template is a binding, as before; a name that is both a program and a modulator
+template, a call whose argument count is not the template's, a call of a template of another
+kind, a `run:` of a `restart` template and a template whose program is a call of itself are
+refused. Each distinct call is compiled once, so the same name and arguments are the same program
+and the bindings its rows make keep their φ as a named program's do.
+
 ## Time
 
 A tick is one frame. Each voice has its own tempo `(a, b)` and swing phase: a step of the voice
@@ -191,9 +212,11 @@ changes nothing.
 | `mode` | `$D418` bits 4-7 become the value's bits 4-7 |
 | `freq: b`, `slot.freq: b` | binds the voice's frequency slot to `b`; an integer `n` is `F(N) + n` |
 | `run: c3`, `run: pw2`, `run: f1` | starts that program at this tick in the control, pulse or filter slot |
+| `run: arp(7,4)`, `run: ctrl:arp(7,4)` | starts the call's program (see [Definitions](#definitions)) in its kind's slot |
 | `vol` | the volume, `$D418` bits 0-3 |
 
-Values wider than their field keep their low bits.
+Values wider than their field keep their low bits. In a program template's rows a parameter
+stands for the integer its call passes (see [Definitions](#definitions)).
 
 ## Slots
 

@@ -15,7 +15,9 @@ from unitracker_player.document import (
     Code,
     Document,
     Expr,
+    Param,
     Program,
+    Row,
     Slot,
     note_number,
     read,
@@ -38,6 +40,7 @@ ORDER = ("events", "ctrl", "pulse", "filter", "freq", "pw", "cut")
 PHASES = (*ORDER, "read")
 SLOT_PHASES = {"ctrl": CONTROL, "pulse": PULSE, "filter": FILTER}
 FREQ_MASK, PW_MASK, CUT_MASK = 0xFFFF, 0xFFF, 0x7FF
+KIND_CELL = {"pw": "pw", "filter": "cut"}
 ROW_KEYS = frozenset("ctrl gate note ad sr pw cut res route mode freq run vol".split())
 
 
@@ -122,6 +125,38 @@ def _slot(name) -> int:
     return PULSE if name.startswith("pw") else CONTROL if name.startswith("c") else FILTER
 
 
+def _kind(name: str) -> str:
+    """The kind of a program's name."""
+    return {"r": "restart", "c": "ctrl", "p": "pw", "f": "filter"}[name[0]]
+
+
+def _bound(value, bag: dict, where):
+    """A program row's value with each parameter of a template's that it reads, a Param, a
+    cell value that is its name alone or a call's named argument, its integer in ``bag``."""
+    if isinstance(value, Param):
+        return _argument(value.name, bag, where) * value.sign
+    if isinstance(value, Expr) and isinstance(value.node, ast.Name) and value.node.id in bag:
+        return bag[value.node.id]
+    if isinstance(value, Call):
+        args = tuple(a if isinstance(a, int) else _argument(a, bag, where) for a in value.args)
+        return Call(value.name, args)
+    if isinstance(value, tuple):
+        return tuple(_bound(v, bag, where) for v in value)
+    return value
+
+
+def _argument(name: str, bag: dict, where) -> int:
+    if name not in bag:
+        raise PlayError(f"program {where}: parameter {name} is no template's of format {VERSION}")
+    return bag[name]
+
+
+def _ticks(value: int, where) -> int:
+    if value < 0:
+        raise PlayError(f"program {where}: {value} ticks")
+    return value
+
+
 def _spelled(key: str, value, legacy: bool) -> tuple:
     """A row key or command in the current format's spelling: format 1.20's ``pw: none`` is
     ``pw: hold`` and its ``filter: none`` ``cut: hold``, which 1.21 alone spells."""
@@ -146,7 +181,7 @@ class _Compiler:
         self.slots = self.slotted = self.machine = None
         coded = any(isinstance(t, Code) for t in doc.templates.values())
         self.calls = head.version == VERSION
-        if not self.calls and (head.state or coded or doc.signatures or doc.top):
+        if not self.calls and any((head.state, coded, doc.signatures, doc.top, doc.forms)):
             raise PlayError(f"state, code, signatures and the mod section: format {VERSION}'s")
         if self.calls and (doc.expressions or doc.top != doc.templates.keys()):
             raise PlayError(f"x, a row's mod: format {VERSION} calls its mod section's templates")
@@ -183,25 +218,75 @@ class _Compiler:
             raise PlayError(f"unknown {kind} {name}")
         return names[name]
 
-    def program(self, ref) -> CProgram | None:
+    def program(self, ref, kind: str | None = None, fresh: bool = False) -> CProgram | None:
+        """The compiled program of a name, an inline program, or a call of a program template
+        or, in a ``kind`` pw or filter field, of a modulator template (a program binding its
+        cell, ``fresh`` in an instrument)."""
         if ref is None:
             return None
+        if isinstance(ref, Call):
+            return self.form(ref, kind, fresh)
         key = ("program", ref if isinstance(ref, str) else id(ref))
         if key not in self.memo:
             source = self.named("program", self.doc.programs, ref) if isinstance(ref, str) else ref
+            if isinstance(source, Call):
+                self.memo[key] = self.program(source, _kind(ref))
+                return self.memo[key]
             out = self.memo[key] = CProgram()
             self._fill(out, source, ref)
         return self.memo[key]
 
-    def run(self, value) -> tuple:
-        """``(slot, program)`` of a ``run`` of a program's name or ``(kind, program)``."""
-        kind, ref = value if isinstance(value, tuple) else (value, value)
-        return _slot(kind), self.program(ref)
+    def form(self, ref: Call, kind: str | None, fresh: bool) -> CProgram:
+        """The program of a call: its template's with each parameter its argument, memoised by
+        the call (a call of a modulator template where a pw or filter field binds one)."""
+        if ref.name not in self.doc.forms:
+            if kind not in KIND_CELL:
+                raise PlayError(f"{ref}: {ref.name} is no program template")
+            source = Program((Row(keys=((KIND_CELL[kind], ref),)),), fresh=fresh)
+            return self._program(("program", ref, kind, fresh), source, ref)
+        own, declared, body = self.doc.forms[ref.name]
+        if kind not in (None, own):
+            raise PlayError(f"{ref}: {ref.name} is a {own} program, not a {kind} program")
+        if len(declared) != len(ref.args) or not all(isinstance(a, int) for a in ref.args):
+            raise PlayError(f"{ref}: {ref.name} takes {len(declared)} integer argument(s)")
+        key = ("program", ref)
+        if isinstance(body, Call):
+            if key not in self.memo:
+                self.memo[key] = None
+                self.memo[key] = self.program(_bound(body, dict(zip(declared, ref.args)), ref), own)
+            if self.memo[key] is None:
+                raise PlayError(f"{ref}: a program template calls itself")
+            return self.memo[key]
+        return self._program(key, body, ref, dict(zip(declared, ref.args)))
 
-    def _fill(self, out: CProgram, source: Program, ref):
+    def _program(self, key, source: Program, ref, bag=None) -> CProgram:
+        if key not in self.memo:
+            self._fill(self.memo.setdefault(key, CProgram()), source, ref, bag or {})
+        return self.memo[key]
+
+    def run(self, value) -> tuple:
+        """``(slot, program)`` of a ``run`` of a program's name, ``(kind, program)`` or a call,
+        bare or after its kind as ``(kind, call)``."""
+        kind, ref = (value, value) if isinstance(value, (str, Call)) else value
+        if isinstance(ref, Call):
+            own = self.doc.forms.get(ref.name, (None,))[0]
+            if own in (None, "restart"):
+                raise PlayError(f"run: {ref}: {ref.name} is no ctrl, pw or filter program template")
+            kind = own if kind is ref else kind
+        return _slot(kind), self.program(ref, kind if isinstance(ref, Call) else None)
+
+    def _fill(self, out: CProgram, source: Program, ref, bag=None):
         if source.loop is not None and source.loop >= len(source.rows):
             raise PlayError(f"program {ref}: loop row {source.loop} out of range")
-        out.rows = tuple((r.wait, r.hold, self.ops(r.keys)) for r in source.rows)
+        bag = bag or {}
+        out.rows = tuple(
+            (
+                _ticks(_bound(r.wait, bag, ref), ref),
+                _ticks(_bound(r.hold, bag, ref), ref),
+                self.ops(_bound(r.keys, bag, ref)),
+            )
+            for r in source.rows
+        )
         out.loop, out.fresh = source.loop, source.fresh
 
     def ops(self, keys) -> tuple:
@@ -237,7 +322,7 @@ class _Compiler:
         return cell, (slot, self.expression(value, cell))
 
     def restart(self, ref) -> tuple | None:
-        prog = self.program(ref)
+        prog = self.program(ref, "restart")
         if prog is None or not prog.rows:
             return None
         ticks, ahead = [0], 0
@@ -265,9 +350,9 @@ class _Compiler:
             self.memo[key] = CInstrument(
                 ins.ad,
                 ins.sr,
-                self.program(ins.ctrl),
-                self.program(ins.pw),
-                self.program(ins.filter),
+                self.program(ins.ctrl, "ctrl"),
+                self.program(ins.pw, "pw", True),
+                self.program(ins.filter, "filter", True),
                 tuple(self.cell(key, value, False)[1] for key, value in ins.freq) or None,
                 self.shape(ins.fn),
                 dict(ins.p0) if ins.p0 else None,
@@ -283,6 +368,8 @@ class _Compiler:
         if isinstance(value, int):
             return self.fn(Expr(ast.Constant(value)), freq)
         if isinstance(value, Call):
+            if not all(isinstance(a, int) for a in value.args):
+                raise PlayError(f"{value}: a parameter is read only in a program template's rows")
             return self.call(value, cell)
         if isinstance(value, Code):
             return self.anonymous(value, cell)

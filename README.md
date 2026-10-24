@@ -31,7 +31,10 @@ MPU, with per-voice state from the document's `state` line; its templates, in a 
 section keyed by signatures (`vib(c, s): |`), are bound by calls (`wob.freq: vib(3,40)`), and
 code reads the note table as `F.lo` / `F.hi`. Any definition may also stand inline at its one use
 (`C4.{ad: 9}`, `run: pw[{pw: 5}, end]`, `play: [[C4, -*3]+2]`, `!pw:asm{lda phi; sta v; rts}`,
-`!pw:'v + 40'`) and plays as its named form.
+`!pw:'v + 40'`) and plays as its named form. A program record may be a template keyed by its
+signature (`arp(a, b): [{ctrl: 65, note: +a}, {wait: a, note: -b}, {loop: 0}]`), which a call
+binds wherever a program's name stands (`ctrl: arp(7,4)`, `restart: hr(2,9,220)`,
+`run: ctrl:arp(7,4)`) and plays as its program with each parameter its argument.
 
 `read(text)` returns the document as plain dataclasses. A text outside the grammar raises
 `unitracker_grammar.CanonicalError`; a document the player refuses raises `PlayError`.

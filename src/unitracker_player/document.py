@@ -8,7 +8,16 @@ import ast
 
 from lark import Token, exceptions
 from unitracker_grammar import CanonicalError, parser
-from unitracker_grammar.code import Statements, call, check, declare, params, signature
+from unitracker_grammar.code import (
+    Call,
+    Statements,
+    call,
+    check,
+    declare,
+    params,
+    programs,
+    signature,
+)
 from unitracker_grammar.expr import Nodes
 from unitracker_grammar.expr import params as expr_params
 
@@ -44,6 +53,13 @@ _VALUES = {
     "SIGNATURE",
     "CALL",
     "PROGRAM_KIND",
+    "PARAM",
+    "REL_PARAM",
+    "RUN_KIND",
+    "RESTART_SIG",
+    "CTRL_SIG",
+    "PW_SIG",
+    "FILTER_SIG",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
@@ -64,6 +80,15 @@ class Expr:
 
     node: ast.expr
     bag: tuple | None = None
+
+
+@dataclass(frozen=True)
+class Param:
+    """A program template's parameter where a row reads it: its value times ``sign``, -1 for a
+    relative note's ``-p``."""
+
+    name: str
+    sign: int = 1
 
 
 @dataclass(frozen=True)
@@ -167,7 +192,8 @@ class Document:
     """A whole document: the header, its tables and init row, every definition by name and the
     timeline's rows of play entries with its ending (``loop`` None for ``end``); ``templates``
     the ``mod`` records by name, each an Expr or a Code, ``signatures`` ``{name: parameters}``
-    of those keyed by a signature and ``top`` the names of the top-level ``mod`` section's."""
+    of those keyed by a signature and ``top`` the names of the top-level ``mod`` section's;
+    ``forms`` the program templates, ``{name: (kind, parameters, program)}``."""
 
     header: Header
     tables: dict
@@ -181,6 +207,7 @@ class Document:
     templates: dict = field(default_factory=dict)
     signatures: dict = field(default_factory=dict)
     top: frozenset = frozenset()
+    forms: dict = field(default_factory=dict)
 
 
 def _tok(token: Token):
@@ -188,6 +215,10 @@ def _tok(token: Token):
         return int(token)
     if token.type == "CALL":
         return call(token)
+    if token.type in ("PARAM", "REL_PARAM"):
+        return Param(token.lstrip("+-"), -1 if token[0] == "-" else 1)
+    if token.type == "RUN_KIND":
+        return token[:-1]
     return NONE if token.type == "NONE" else str(token)
 
 
@@ -263,13 +294,13 @@ class ToDocument(Nodes):
             head.pop("state", {}),
         )
         templates, signatures = _check(defs["mod"], header.state)
-        programs = {**defs["restart"], **defs["ctrl"], **defs["pw"], **defs["filter"]}
+        defs["programs"], defs["forms"] = _programs(defs)
         return Document(
             header,
             head["tables"],
             head["init"],
             defs["ins"],
-            programs,
+            defs["programs"],
             defs["x"],
             defs["phrase"],
             tuple(timeline),
@@ -277,6 +308,7 @@ class ToDocument(Nodes):
             templates,
             signatures,
             head.pop("top", frozenset()),
+            defs["forms"],
         )
 
     @staticmethod
@@ -393,7 +425,7 @@ class ToDocument(Nodes):
 
     @staticmethod
     def section(children):
-        kind = children[0].type.lower()
+        kind = children[0].type.lower().removesuffix("_sig")
         kind = "mod" if kind in ("name", "signature") else kind
         entries = []
         for c in _values(children):
@@ -475,7 +507,7 @@ class ToDocument(Nodes):
     @staticmethod
     def ctrl_value(children):
         (value,) = _values(children)
-        if isinstance(value, int):
+        if not isinstance(value, str):
             return (value, None)
         ctrl, mask = value.split("^")
         return (int(ctrl) if ctrl else None, int(mask))
@@ -483,7 +515,7 @@ class ToDocument(Nodes):
     @staticmethod
     def note_value(children):
         (value,) = _values(children)
-        return ("rel", value) if isinstance(value, int) else ("abs", note_number(value))
+        return ("abs", note_number(value)) if isinstance(value, str) else ("rel", value)
 
     @staticmethod
     def cell_value(children):
@@ -501,7 +533,9 @@ class ToDocument(Nodes):
 
     @staticmethod
     def program_name(children):
-        return _values(children)[0]
+        """A program's name, a call, or a call after its kind as ``(kind, call)``."""
+        values = _values(children)
+        return tuple(values) if len(values) > 1 else values[0]
 
     @staticmethod
     def run_program(children):
@@ -570,6 +604,22 @@ def _check(records: dict, state: dict) -> tuple[dict, dict]:
     return templates, signatures
 
 
+def _programs(defs: dict) -> tuple[dict, dict]:
+    """The named programs of the definitions by name, and the program templates as
+    ``{name: (kind, parameters, program)}``."""
+    named, forms = {}, {}
+    for kind in ("restart", "ctrl", "pw", "filter"):
+        for key, value in defs[kind].items():
+            if "(" not in key:
+                named[key] = value
+                continue
+            name, declared = signature(key)
+            if name in forms:
+                raise CanonicalError(f"program template {name} is defined twice")
+            forms[name] = (kind, declared, value)
+    return named, forms
+
+
 def _slot_link(key):
     """A slot's key chain link: ``mod`` its name, ``hold`` and ``reset`` their events."""
 
@@ -623,10 +673,12 @@ def _program(value) -> bool:
 
 def _modulation(kind: str, fields: list, fresh: bool = False):
     """A pulse or filter modulation's ``(key, value)`` fields as one program: a program or its
-    name, unprefixed and alone, is itself; bindings are one row binding each one's slot of the
-    cell."""
-    if len(fields) == 1 and fields[0][0] == kind and _program(fields[0][1]):
-        return fields[0][1]
+    name, unprefixed and alone, is itself, as is a call there, which the compiler resolves to a
+    program template's or a binding of a modulator template's; bindings are one row binding
+    each one's slot of the cell."""
+    if len(fields) == 1 and fields[0][0] == kind:
+        if isinstance(fields[0][1], Call) or _program(fields[0][1]):
+            return fields[0][1]
     if any(_program(value) for _, value in fields):
         raise CanonicalError(f"{kind}: a program is the one {kind} field and takes no slot")
     cell = _CELL[kind]
@@ -642,6 +694,8 @@ def read(text: str) -> Document:
         raise CanonicalError(
             f"line {exc.line} column {exc.column}: {str(exc).splitlines()[0]}"
         ) from exc
+    if tree.children[0] == "1.23":
+        programs(tree)
     try:
         return ToDocument().transform(tree)
     except exceptions.VisitError as exc:
