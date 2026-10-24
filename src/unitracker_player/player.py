@@ -10,12 +10,23 @@ from tqdm import tqdm
 from unitracker_grammar import PAL_HZ
 from unitracker_grammar.expr import ExpressionError, bind
 
-from unitracker_player.document import HOLD, Document, Expr, Program, Slot, note_number, read
+from unitracker_player.code import Machine, Routine
+from unitracker_player.document import (
+    HOLD,
+    Code,
+    Document,
+    Expr,
+    Program,
+    Slot,
+    note_number,
+    read,
+)
 from unitracker_player.expr import compile_expr, constant, note_table, offset
 from unitracker_player.modulation import SHAPES
 from unitracker_player.sequencer import PlayError, Sequencer
 
-VERSION = "1.22"
+VERSION = "1.23"
+SLOTTED = "1.22"
 OWNED = ("1.20", "1.21")
 LEGACY = "1.20"
 MAX_VOICES = 3
@@ -79,7 +90,8 @@ class Song:
     """A document compiled for playing; ``slots`` is ``{cell: slot names}``, None in the formats
     whose command modulators own their cells; ``marks`` ``{mark: events}`` for each ``hold key``
     and ``reset key``, ``rows`` their row events; ``defaults`` ``{cell: ((slot, fn), ...)}``;
-    ``order`` the phases of a tick."""
+    ``order`` the phases of a tick; ``state`` ``{cell: bytes of its state}`` and ``code``
+    whether a code modulator plays."""
 
     voices: int
     tempo: tuple
@@ -95,6 +107,8 @@ class Song:
     slots: dict | None
     defaults: dict
     order: tuple
+    state: dict
+    code: bool
 
 
 def _tempo(value, where: str) -> tuple:
@@ -129,13 +143,16 @@ class _Compiler:
         head = doc.header
         self.legacy = head.version == LEGACY
         self.memo: dict = {}
-        self.slots = self.slotted = None
+        self.slots = self.slotted = self.machine = None
+        coded = any(isinstance(t, Code) for t in doc.templates.values())
+        if head.version != VERSION and (head.state or coded):
+            raise PlayError(f"state and code templates: format {VERSION}'s")
         if head.version in OWNED:
             if head.slots:
-                raise PlayError(f"slots: format {VERSION}'s")
+                raise PlayError(f"slots: format {SLOTTED}'s")
         else:
             if head.hold:
-                raise PlayError(f"hold: format {VERSION} holds in its slots line")
+                raise PlayError(f"hold: format {SLOTTED} holds in its slots line")
             self.slotted = {c: head.slots.get(c, (Slot(c),)) for c in CELLS}
             self.slots = {c: tuple(s.name for s in slots) for c, slots in self.slotted.items()}
             for cell, names in self.slots.items():
@@ -143,7 +160,7 @@ class _Compiler:
                     raise PlayError(f"slots: {cell} names a slot twice")
         self.order = ORDER if head.order is None else head.order
         if head.order is not None and (self.slots is None or sorted(head.order) != sorted(PHASES)):
-            raise PlayError(f"order: format {VERSION}'s, each of {', '.join(PHASES)} once")
+            raise PlayError(f"order: format {SLOTTED}'s, each of {', '.join(PHASES)} once")
 
     def fn(self, expr: Expr, freq: bool = False):
         node = expr.node
@@ -197,7 +214,7 @@ class _Compiler:
         name, _, cell = key.rpartition(".")
         if self.slots is None:
             if name:
-                raise PlayError(f"{key}: a slot prefix is format {VERSION}'s")
+                raise PlayError(f"{key}: a slot prefix is format {SLOTTED}'s")
             slot, ends = int(command), int(command) + 1
         else:
             names = self.slots[cell]
@@ -208,7 +225,7 @@ class _Compiler:
             return cell, (None, (slot,))
         if value == HOLD:
             return cell, (HOLD, tuple(range(ends)))
-        return cell, (slot, self.expression(value, cell == "freq"))
+        return cell, (slot, self.expression(value, cell))
 
     def restart(self, ref) -> tuple | None:
         prog = self.program(ref)
@@ -248,19 +265,24 @@ class _Compiler:
             )
         return self.memo[key]
 
-    def expression(self, value, freq: bool = False):
-        """The modulator a binding names: an integer, an instance's or a template's name, an
-        expression, or a template with its parameter bag."""
+    def expression(self, value, cell: str):
+        """The modulator a binding of ``cell`` names: an integer, an instance's or a template's
+        name, an expression, or a template with its parameter bag; a code template's is its
+        :class:`Routine`."""
+        freq = cell == "freq"
         if isinstance(value, int):
             return self.fn(Expr(ast.Constant(value)), freq)
         if isinstance(value, str):
             if value in self.doc.expressions:
-                return self.expression(self.doc.expressions[value], freq)
+                return self.expression(self.doc.expressions[value], cell)
             self.named("modulator", self.doc.templates, value)
             value = Expr(ast.Name(value))
         node = value.node
         if isinstance(node, ast.Name) and node.id in self.doc.templates:
-            node = self.doc.templates[node.id].node
+            template = self.doc.templates[node.id]
+            if isinstance(template, Code):
+                return self.routine(node.id, template, value.bag or (), cell)
+            node = template.node
             value = Expr(value.node, value.bag or ())
         elif value.bag is not None:
             raise PlayError(f"{ast.unparse(node)}: a parameter bag binds a template")
@@ -273,12 +295,20 @@ class _Compiler:
                 raise PlayError(f"{ast.unparse(value.node)}: {exc}") from exc
         return self.fn(Expr(node), freq)
 
+    def routine(self, name: str, template: Code, bag: tuple, cell: str) -> Routine:
+        if not all(isinstance(x, int) for _, x in bag):
+            raise PlayError(f"{name}: a parameter is an integer")
+        key = ("code", name, cell, tuple(sorted(bag)))
+        if key not in self.memo:
+            if self.machine is None:
+                self.machine = Machine(self.doc.tables, self.doc.header.state)
+            self.memo[key] = self.machine.compile(name, template.statements, dict(bag), cell)
+        return self.memo[key]
+
     def defaults(self) -> dict:
         """``{cell: ((slot, fn), ...)}`` of the slots' default bindings."""
         return {
-            cell: tuple(
-                (k, self.expression(s.mod, cell == "freq")) for k, s in enumerate(slots) if s.mod
-            )
+            cell: tuple((k, self.expression(s.mod, cell)) for k, s in enumerate(slots) if s.mod)
             for cell, slots in (self.slotted or {}).items()
         }
 
@@ -329,9 +359,9 @@ def compile_document(doc: Document, compiler=None) -> Song:
     """The Song of a Document: every name resolved and every expression compiled once, by
     ``compiler``, a ``_Compiler`` subclass when given."""
     head = doc.header
-    if head.version not in (*OWNED, VERSION):
+    if head.version not in (*OWNED, SLOTTED, VERSION):
         raise PlayError(
-            f"version {head.version}: the player reads {', '.join(OWNED)} and {VERSION}"
+            f"version {head.version}: the player reads {', '.join((*OWNED, SLOTTED))} and {VERSION}"
         )
     if not 1 <= head.voices <= MAX_VOICES:
         raise PlayError(f"voices: {head.voices}: the player plays 1 to {MAX_VOICES} voices")
@@ -373,6 +403,8 @@ def compile_document(doc: Document, compiler=None) -> Song:
         comp.slots,
         comp.defaults(),
         comp.order,
+        {cell: sum(size for _, size in names) for cell, names in head.state.items()},
+        comp.machine is not None,
     )
 
 
@@ -412,7 +444,7 @@ class _Voice:  # pylint: disable=too-many-instance-attributes
     freq_prog, freq_cmd = _level("freq", 0), _level("freq", 1)
     pw_prog, pw_cmd = _level("pw", 0), _level("pw", 1)
 
-    def __init__(self, widths: dict):
+    def __init__(self, widths: dict, state: dict):
         self.freq = self.pw = self.ctrl = self.mask = self.gate = self.ad = self.sr = 0
         self.note = self.absolute = None
         self.relative = 0
@@ -420,6 +452,7 @@ class _Voice:  # pylint: disable=too-many-instance-attributes
         self.freq_hold = False
         self.osc = None
         self.slots = [[None, 0, 0] for _ in range(3)]
+        self.state = {cell: bytearray(state.get(cell, 0)) for cell in ("freq", "pw")}
 
     @property
     def sounding(self) -> int | None:
@@ -442,8 +475,9 @@ class Player:  # pylint: disable=too-many-instance-attributes
         self.regs = [0] * REGISTERS
         names = song.slots or dict.fromkeys(CELLS, (0, 1))
         widths = {cell: len(n) for cell, n in names.items()}
-        self.voices = [_Voice(widths) for _ in range(song.voices)]
+        self.voices = [_Voice(widths, song.state) for _ in range(song.voices)]
         self.cut_mods = [None] * widths["cut"]
+        self.cut_state = bytearray(song.state.get("cut", 0))
         self.cut = self.res = self.route = self.mode = self.vol = 0
         self._seq = Sequencer(song)
         self._ins = [None] * song.voices
@@ -809,12 +843,14 @@ class Player:  # pylint: disable=too-many-instance-attributes
             return
         voice.osc = [fn, dict(p0) if p0 else {}, 0, "freq", -1, None]
 
-    def _chain(self, t: int, mods: list, value: int, mask: int) -> int | None:
+    # pylint: disable-next=too-many-arguments,too-many-positional-arguments
+    def _chain(self, t: int, mods: list, value: int, mask: int, cell: str) -> int | None:
         """The cell's value ``value`` after its modulators ``mods`` fire, or None where it has
         none. Each slot in order fires on the value the slot before it left, unless it holds on
         the events of the voice that set it, its φ first back at 0 on its reset events; in the
         owning formats the command slot, else the program slot, owns the cell and a hold takes
-        its last firing again."""
+        its last firing again. A code modulator runs on the state of ``cell`` of the voice that
+        set it (the one ``cut`` state)."""
         if self.song.slots is None:
             mod = mods[1] or mods[0]
             if mod is None:
@@ -829,7 +865,12 @@ class Player:  # pylint: disable=too-many-instance-attributes
             if self._marked(mod[2], "reset " + mod[3], t):
                 mod[1] = 0
             if not self._marked(mod[2], "hold " + mod[3], t):
-                value = mod[0](value, mod[1], *self._notes(mod[2])) & mask
+                fn, notes = mod[0], self._notes(mod[2])
+                if type(fn) is Routine:  # pylint: disable=unidiomatic-typecheck
+                    state = self.cut_state if cell == "cut" else self.voices[mod[2]].state[cell]
+                    value = fn(value, mod[1], *notes, state) & mask
+                else:
+                    value = fn(value, mod[1], *notes) & mask
                 mod[1] += 1
         return value
 
@@ -848,11 +889,11 @@ class Player:  # pylint: disable=too-many-instance-attributes
         t = self.tick
         for cell in self._cells:
             if cell == "cut":
-                out = self._chain(t, self.cut_mods, self.cut, CUT_MASK)
+                out = self._chain(t, self.cut_mods, self.cut, CUT_MASK, "cut")
                 self.cut = self.cut if out is None else out
             elif cell == "pw":
                 for voice in self.voices:
-                    out = self._chain(t, voice.pw_mods, voice.pw, PW_MASK)
+                    out = self._chain(t, voice.pw_mods, voice.pw, PW_MASK, "pw")
                     voice.pw = voice.pw if out is None else out
             else:
                 for vix in range(len(self.voices)):
@@ -869,7 +910,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
             if at := _firing(voice.osc, 2, held, voice.freq):
                 voice.freq = fn(bag, *at, base) & FREQ_MASK
             return
-        out = self._chain(t, voice.freq_mods, voice.freq, FREQ_MASK)
+        out = self._chain(t, voice.freq_mods, voice.freq, FREQ_MASK, "freq")
         if out is not None:
             voice.freq = out
         elif n is not None and not voice.freq_hold:

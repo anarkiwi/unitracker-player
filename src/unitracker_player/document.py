@@ -8,6 +8,7 @@ import ast
 
 from lark import Token, exceptions
 from unitracker_grammar import CanonicalError, parser
+from unitracker_grammar.code import Statements, check
 from unitracker_grammar.expr import Nodes
 
 NONE = None
@@ -59,6 +60,13 @@ class Expr:
 
     node: ast.expr
     bag: tuple | None = None
+
+
+@dataclass(frozen=True)
+class Code:
+    """A code template: its statements (:mod:`unitracker_grammar.code`)."""
+
+    statements: tuple
 
 
 @dataclass(frozen=True)
@@ -133,7 +141,8 @@ class Play:
 @dataclass(frozen=True)
 class Header:
     """The header lines, with their defaults; ``hold`` is ``{cell: ((event, k), ...)}``,
-    ``slots`` ``{cell: (Slot, ...)}``, ``order`` the phases of a tick or None."""
+    ``slots`` ``{cell: (Slot, ...)}``, ``order`` the phases of a tick or None, ``state``
+    ``{cell: ((name, size), ...)}``."""
 
     version: str
     meta: dict = field(default_factory=dict)
@@ -144,13 +153,14 @@ class Header:
     hold: dict = field(default_factory=dict)
     slots: dict = field(default_factory=dict)
     order: tuple | None = None
+    state: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class Document:
     """A whole document: the header, its tables and init row, every definition by name and the
     timeline's rows of play entries with its ending (``loop`` None for ``end``); ``templates``
-    the ``mod`` records."""
+    the ``mod`` records, each an Expr or a Code."""
 
     header: Header
     tables: dict
@@ -237,7 +247,9 @@ class ToDocument(Nodes):
             head.pop("hold", {}),
             head.pop("slots", {}),
             head.pop("order", None),
+            head.pop("state", {}),
         )
+        _check(defs["mod"], header.state)
         programs = {**defs["restart"], **defs["ctrl"], **defs["pw"], **defs["filter"]}
         return Document(
             header,
@@ -301,6 +313,18 @@ class ToDocument(Nodes):
         return ("order", tuple(_values(children)))
 
     @staticmethod
+    def state(children):
+        (cells,) = children
+        names = [n for variables in cells.values() for n, _ in variables]
+        if len(set(names)) != len(names):
+            raise CanonicalError(f"state variables declared twice: {names}")
+        return ("state", cells)
+
+    @staticmethod
+    def state_vars(children):
+        return tuple((str(name), int(size)) for name, size in (c.children for c in children))
+
+    @staticmethod
     def slots(children):
         return ("slots", dict(_values(children)))
 
@@ -360,7 +384,7 @@ class ToDocument(Nodes):
             else:
                 entries[-1].append(c)
         if kind in ("x", "mod"):
-            return (kind, [(n, v if isinstance(v, Expr) else Expr(v)) for n, v in entries])
+            return (kind, [(n, v if isinstance(v, (Expr, Code)) else Expr(v)) for n, v in entries])
         if kind in ("pw", "filter"):
             return (kind, [(n, _modulation(kind, [(kind, v)])) for n, v in entries])
         return (kind, [tuple(e) for e in entries])
@@ -492,6 +516,20 @@ class ToDocument(Nodes):
     def fexpr(self, children):
         return Expr(super().fexpr(children))
 
+    def code(self, children):
+        return Code(Statements.code(self, children))
+
+    code_label, code_op = Statements.code_label, Statements.code_op
+    code_imm, code_mem = Statements.code_imm, Statements.code_mem
+
+
+def _check(templates: dict, state: dict):
+    """Checks the code ``templates``: none's label names a state variable of ``state``."""
+    names = {n for variables in state.values() for n, _ in variables}
+    for template in templates.values():
+        if isinstance(template, Code):
+            check(template.statements, names)
+
 
 def _slot_link(key):
     """A slot's key chain link: ``mod`` its name, ``hold`` and ``reset`` their events."""
@@ -532,6 +570,7 @@ for _name, _method in {
     **{f"{chain}_{c}": _slotted(c) for chain in ("row", "cmd") for c in ("pw", "cut", "freq")},
     **{f"ins_{c}": _slotted(c) for c in ("pw", "filter", "freq")},
     **{f"slot_{k}": _slot_link(k) for k in ("mod", "hold", "reset")},
+    **{f"state_{c}": _link(c) for c in ("freq", "pw", "cut")},
 }.items():
     setattr(ToDocument, _name, _method)
 

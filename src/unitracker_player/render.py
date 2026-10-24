@@ -128,10 +128,13 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
 
 def render(doc, ticks: int | None = None, progress: bool = False) -> Render:
     """The frames of Document ``doc``: ``ticks`` of them when given (as an ending song), else
-    to its end, or to the first recurrence of its state at its loop row."""
+    to its end, or to the first recurrence of its state at its loop row; a looping song with a
+    code modulator needs ``ticks``."""
     # pylint: disable=too-many-locals
     compiler = type("Recording", (_Recording,), {"nodes": {}})
     song = compile_document(doc, compiler)
+    if ticks is None and song.loop is not None and song.code:
+        raise RenderError("a looping song with a code modulator: its loop needs --ticks")
     namespace = {"_F": song.table, "_T": {k: indexed(v) for k, v in doc.tables.items()}}
     periods = _Periods(compiler.nodes, namespace)
     player, rows = Player(song), []

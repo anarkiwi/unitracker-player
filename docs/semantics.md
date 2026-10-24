@@ -8,7 +8,7 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 
 | line | meaning |
 |---|---|
-| `unitracker` | `1.22`, or `1.21` and `1.20` (see [Format 1.21](#format-121)); any other version is refused |
+| `unitracker` | `1.23` and `1.22`, or `1.21` and `1.20` (see [Format 1.21](#format-121)); any other version is refused |
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
@@ -16,7 +16,8 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 | `hold` | format 1.21's (see [Format 1.21](#format-121)); refused in `1.22` |
 | `slots` | per cell, its modulator slots (see [Slots](#slots)); refused before `1.22` |
 | `order` | the phases of a tick in the order they run (see [Order within a tick](#order-within-a-tick)); refused before `1.22` |
-| `tables` | the tables expressions read as `T[k]` |
+| `state` | per cell, the state variables code modulators read and write (see [Code modulators](#code-modulators)); refused before `1.23` |
+| `tables` | the tables expressions read as `T[k]` and code as `T.lo` and `T.hi` |
 | `init` | one event per voice (see [Init](#init)); a count other than `voices` is refused |
 
 ## Initial state
@@ -39,7 +40,8 @@ A `mod` record is a template: an expression that may read parameters, lowercase 
 `n`, a function's and a record's name (`x1`, `pw1`, `f1`, ...). An `x` record is an instance:
 an expression, or a template's name with the bag `{name: integer, ...}` naming each of its
 parameters and no other, which is the template with each parameter its integer. An expression
-outside a template that reads a parameter is refused.
+outside a template that reads a parameter is refused. A `mod` record that is a code block is a
+code template (see [Code modulators](#code-modulators)); one is refused before `1.23`.
 
 ## Time
 
@@ -222,6 +224,33 @@ with `zero=True`. They are Python integers: `//` and `%` are floored, and 0 when
 0; a comparison is 1 or 0; `F(k)` is `unitracker_grammar.frequency(k, clock_hz)`, 0 below C0
 and where the word overflows; `T[k]` is 0 outside the table, and a table the document does not
 define is refused.
+
+## Code modulators
+
+A code template is an NMOS 6502 routine (`unitracker_grammar.code`) fired where an expression
+would be; its parameters are its immediates, bound by a bag as an expression template's. Each
+voice has, per cell of the `state` line, its own copy of the cell's variables, and the song one
+copy of the cutoff's; every byte is 0 at tick 0, and only code reads and writes it. A firing runs
+on the copy of the voice that bound the slot (the one copy for `cut`), so the state persists
+across firings, slots, bindings and notes; φ restarts as for any modulator, the state never does.
+
+| symbol | bytes | at entry | at exit |
+|---|---|---|---|
+| `v` | 2 (`v`, `v+1`) | the value the slot before left | wrapped to the cell's width, the slot's value |
+| `phi` | 2 | φ mod 65536 | discarded |
+| `nn`, `ne` | 1 each | `N & 255`, `n & 255` | discarded |
+| a state variable of the slot's cell | its size | the voice's copy | stored back to it |
+| `T.lo`, `T.hi` | per entry | bits 0-7, 8-15 of entry `k` at `+k`; 0 past the table | discarded |
+
+At entry A, X and Y are 0, the flags are clear but I and the stack is empty. The routine runs
+from its first statement to an `rts` on an empty stack; every other write is discarded at exit.
+The player lays `v`, `phi`, `nn`, `ne` and the state in zero page, then the tables and the code
+in one 64K memory per song, and picks zero page or absolute for each memory operand. Refused: a
+symbol that is none of these or a state variable of another cell than the binding's, a branch out
+of range, a bag that names other than the routine's parameters, more than 4096 instructions in a
+firing (the last `rts` among them), a pull or `rts` on an empty stack, a 257th byte pushed, and
+running outside the routine's code. A looping song with a code modulator has no proved loop:
+`unitracker-sid` needs `--ticks` for it.
 
 A shape (`mod:` of an instrument) drives the frequency in place of its slots from the note
 that arms it until a `!freq` binding or a `hold` of `freq`, holding as the first slot.

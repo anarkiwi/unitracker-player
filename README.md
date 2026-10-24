@@ -26,6 +26,9 @@ regs = player.step()              # the 25 registers after one tick; None once t
 player.regs                       # the register file the last tick wrote, one store per register
 ```
 
+Format 1.23's code templates run as 6502 routines on a [jennings](https://pypi.org/project/jennings/)
+MPU, with per-voice state from the document's `state` line.
+
 `read(text)` returns the document as plain dataclasses. A text outside the grammar raises
 `unitracker_grammar.CanonicalError`; a document the player refuses raises `PlayError`.
 
