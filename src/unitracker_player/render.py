@@ -89,8 +89,9 @@ def _voice(voice: _Voice, t: int, periods: _Periods) -> tuple:
 
 
 def snapshot(player: Player, periods: _Periods) -> tuple:
-    """The player's state at its current tick, every tick made relative to it and every
-    modulator's phi reduced by its expression's period."""
+    """The player's state at its current tick, the registers it has yet to write included,
+    every tick made relative to it and every modulator's phi reduced by its expression's
+    period."""
     t, seq = player.tick, player._seq  # pylint: disable=protected-access
     sequencer = (
         seq.tempo,
@@ -112,7 +113,8 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
     voices = tuple(_voice(v, t, periods) for v in player.voices)
     ins = player._ins  # pylint: disable=protected-access
     held = {k: {x - t for x in v} for k, v in player._held.items() if v}  # pylint: disable=W0212
-    return _freeze((voices, globals_, mods, sequencer, ins, pending, held), t)
+    delay = tuple(map(tuple, player._delay))  # pylint: disable=protected-access
+    return _freeze((voices, globals_, mods, sequencer, ins, pending, held, delay), t)
 
 
 def render(doc, ticks: int | None = None, progress: bool = False) -> Render:

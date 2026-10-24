@@ -53,9 +53,9 @@ def _edit(text: str, *pairs) -> str:
 
 PW = doc("[C4.i1 run:pw1,-*3]", pw={"pw1": "v + 3"})
 REMOVED = {
-    "version-1.23": _edit(doc(), ("unitracker:2.2", "unitracker:1.23")),
-    "version-2.0": _edit(doc(), ("unitracker:2.2", "unitracker:2.0")),
-    "version-2.1": _edit(doc(), ("unitracker:2.2", "unitracker:2.1")),
+    "version-1.23": _edit(doc(), ("unitracker:2.3", "unitracker:1.23")),
+    "version-2.0": _edit(doc(), ("unitracker:2.3", "unitracker:2.0")),
+    "version-2.1": _edit(doc(), ("unitracker:2.3", "unitracker:2.1")),
     "bang-command": _edit(doc("[C4.i1 pw:1,-*3]"), (" pw:1", "!pw:1")),
     "spaced-comma": _edit(doc(), ("[C4.i1,-*3]", "[C4.i1, -*3]")),
     "spaced-colon": _edit(doc(), ("meta:{title:T}", "meta: {title: T}")),
@@ -94,6 +94,7 @@ def test_removed_constructs_are_canonical_errors(text):
         read(text)
 
 
+@pytest.mark.noncanonical
 def test_a_phrase_note_takes_the_previous_note_s_octave():
     """Sharps are lower case; a note without its octave takes the previous note's in its own
     phrase, across rests, and an inline phrase starts its own; transpose applies after."""

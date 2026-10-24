@@ -8,7 +8,7 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 
 | line | meaning |
 |---|---|
-| `unitracker` | `2.2`; any other version is outside the grammar |
+| `unitracker` | `2.3`; any other version is outside the grammar |
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248) and `rounding` how its words are rounded (see [Modulators](#modulators)); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
@@ -17,8 +17,10 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 | `order` | the phases of a tick in the order they run (see [Order within a tick](#order-within-a-tick)) |
 | `state` | per cell, the state variables code modulators read and write (see [Code modulators](#code-modulators)) |
 | `tables` | the tables expressions read as `T[k]` and code as `T.lo` and `T.hi` |
-| `mod`, `restart`, `ins`, `ctrl`, `pw`, `filter`, `phrase` | the definitions (see [Definitions](#definitions)) |
+| `mod`, `restart`, `ins`, `ctrl`, `pw`, `filter`, `phrase`, `section` | the definitions (see [Definitions](#definitions), [Sugar](#sugar)) |
 | `regs` | the 25 registers before tick 0, `$D400` first (see [Initial state](#initial-state)); a count other than 25 is refused |
+| `lag` | `lag:k`, the ticks the registers are written after the tick that computes them (default 0, see [Registers](#registers)) |
+| `global` | `global:[cut]`: the cutoff's bindings, stops and filter program belong to the song (see [Stops](#stops)) |
 | `init` | one event per voice (see [Init](#init)); a count other than `voices` is refused |
 
 ## Initial state
@@ -35,14 +37,16 @@ every voice's swing is at `a`.
 
 ## Definitions
 
-The sections `mod`, `restart`, `ins`, `ctrl`, `pw`, `filter` and `phrase` add their names to
+The sections `mod`, `restart`, `ins`, `ctrl`, `pw`, `filter`, `phrase` and `section` add their names to
 one namespace for the whole song; a name defined twice, and
-a reference to a name never defined, is refused. A `pw` or `filter` record, and an instrument's
-`pw` or `filter` field, that is a binding (see [Bindings](#bindings)) is the program
-`[{pw:b},end]` or `[{cut:b},end]`, which a record is written as only that binding (an
-instrument's field binding restarts phi, see [Notes](#notes), so there the program is no
-spelling of it); an instrument's several `pw` or `filter` fields are one
-such row binding each field's slot, and a program among them is refused. A program
+a reference to a name never defined, is refused. A `pw` or `filter` record that is a binding `b`
+(see [Bindings](#bindings)), `pw1:ptabs(3)`, `pw2:'v + 3'`, `pw3:800`, plays wherever its name
+stands as `b` written there: an instrument's field naming it (`pw:pw1`) binds as the field
+`pw:ptabs(3)` would, restarting phi on each note (see [Notes](#notes)), and a `run:pw1` runs
+the program `[{pw:b},end]` (`[{cut:b},end]` for `filter`), whose binding keeps its phi as any
+program row's does. An instrument's `pw` or `filter` field that is a binding, and its several
+such fields, are one program row binding each field's slot, restarting phi on each note; a
+program among several fields is refused. A program
 `{loop:k}` with `k` outside its rows is refused.
 
 A `mod` record is a template, an expression or a code block (see
@@ -66,8 +70,7 @@ A named definition, and a template, may instead be written at its first referenc
 (a template's signature) and `=` before its value (a template's body, then its call's arguments):
 `C4.i3={ad:9}`, `run:c3=[{ctrl:65},end]`, `p3=[C4,-*3]+2`, `pw:walk(s)='v + s'(2)`,
 `ctrl:arp(a,b)=[{ctrl:a,note:+b},end](7,4)`, `run:arp(a,b)=ctrl[...](7,4)`. It plays as
-the same definition in its section: the player moves each to its section first
-(`unitracker_grammar.document.top_level`). A section's records are defined for the whole
+the same definition in its section (see [Sugar](#sugar)). A section's records are defined for the whole
 document, one at its first use from that use on in reading order; a reference before it and a
 name defined twice are refused when the document is read.
 
@@ -91,6 +94,41 @@ template, a call whose argument count is not the template's, a call of a templat
 kind, a `run:` of a `restart` template and a template whose program is a call of itself are
 refused. Each distinct call is compiled once, so the same name and arguments are the same program
 and the bindings its rows make keep their phi as a named program's do.
+
+## Sugar
+
+Every construct of this section is sugar: the player plays the grammar's core expansion of the
+document (`unitracker_grammar.expand.core`), so each plays exactly as what it expands to.
+
+| construct | plays as |
+|---|---|
+| a definition at its first use, `C4.i3={ad:9}`, `p3=[C4,-]+2`, `s2=[...]x2` | the same definition in its section, the use its name |
+| a chord name among a call's arguments, `ar(maj)`, `f(2,min)` | its intervals in place (`unitracker_grammar.chords.CHORDS`): `ar(4,7)`, `f(2,3,7)`; not inside a template's body where the name is one of its parameters |
+| an instrument template `ins_1(a,b):{ad:a,sr:b,ctrl:arp(a,7)}` and its call `C4.ins_1(9,240)` | each distinct call an instrument `iK`, the next free number in reading order, its fields the template's with each parameter its argument (in `ad`, `sr`, a call's argument and a cell value alone) |
+| a phrase template `riff(x,y):[x.i1,-,y,E4]` and its call in a play entry `riff(G1,f1)+2` | the inline phrase `[G1.i1,-,f1,E4]+2`: each note parameter its note, a note after a parameter taking that note's octave |
+| a group `[a,b]x3`, in a phrase or among song items | its body that many times (2 or more) |
+| a volta `[body\|end1\|end2]` | the body then `end1`, the body then `end2`, and so on for each ending (2 or more) |
+| a section `s1:[ITEM,...]`; an item `s1`, `s1x2` | the section's items, played out, that many times; a section that plays itself is refused |
+
+A phrase's octave elision follows the written order, groups included (`[C4,[E|G|A5],B]` is C4
+E4 G4 E4 A5 B5). A song item is a row (`play:[...]`), a section, a group or a section's first
+use; the song's `{loop:k}` names its top-level item `k` and continues at the first row that item
+plays.
+
+## Prelude
+
+A call of one of these names, which a document does not define (defining one is refused), binds
+its modulator template (`unitracker_grammar.prelude.PRELUDE`) wherever a modulator template's
+call binds a cell:
+
+| template | expression | plays |
+|---|---|---|
+| `vibrato(d,s,l)` | `F(N) + (phi >= l)*d*(s - abs((phi - l + s) % (4*s) - 2*s))` | `F(N)` for `l` ticks, then a triangle of amplitude `d*s` and period `4*s` around it |
+| `glide(s)` | `v + s` | the cell moves by `s` each tick |
+| `slide(t,s)` | `v + max(min(F(N + t) - v, s), -s)` | the frequency moves at most `s` a tick towards `F(N + t)` and stays there |
+| `pwm(lo,hi,s)` | `lo + (hi - lo) - abs(s*phi % (2*(hi - lo)) - (hi - lo))` | a triangle from `lo` up to `hi` and back, `s` a tick |
+| `sweep(a,b,s)` | `a + max(min(b - a, s*phi), -s*phi)` | from `a` towards `b` by `s` a tick, then `b` |
+| `tremolo(lo,hi,s)` | `lo + (hi - lo)*(phi // s % 2)` | `lo` for `s` ticks, `hi` for `s`, alternating |
 
 ## Time
 
@@ -263,6 +301,12 @@ refused. A binding names its modulator:
 
 A slot's default (`slots:{pw:{a:{mod:note()}}}`) is a binding as any other.
 
+A binding written with `!` after it (`pw:800!`, `freq:'F(N) + 9'!`, `tick.freq:snap()!`,
+`asm{...}!`; in a command, a program row and an instrument's field) is a once binding: it binds
+its slot at phi 0, fires on the first tick its slot fires it (not on a hold event), and then
+leaves the slot unbound as its `none` would: the cell keeps the value it fired, a frequency
+with no other bound slot plays `F(N)` again from the next tick.
+
 A command or a program row binding a slot to the modulator it is bound to (the same expression
 with the same parameters, or the same template with the same arguments) keeps its phi; any other
 binding, a slot's first and a binding of a note's instrument's fields start phi at 0 on that
@@ -380,6 +424,9 @@ the filter slot for `cut` and none for `freq`.
 After a `hold` the frequency holds: it is not `F(N)` until a note starts an instrument, a `freq`
 slot is bound or a `none` of `freq`. The cutoff's `none` and `hold` end its bindings only where
 this voice bound them, and a filter program a voice starts ends the cutoff bindings the other voices' rows made.
+With `global:[cut]` the cutoff belongs to the song: its `none` and `hold` from any voice end
+the bindings whichever voice made them, and its `hold` stops the filter program whichever voice
+started it; a binding still reads the notes and events of the voice that bound it.
 
 ## Order within a tick
 
@@ -400,6 +447,10 @@ phase has run this tick applies from the next tick, and a `row` or `row.KEY` eve
 program row the `ctrl` phase applied before that tick's modulator phase.
 
 ## Registers
+
+Each tick writes the registers the cells made `lag` ticks before (0 without a `lag` line); the
+first `lag` ticks write the `regs` line's values (0 without one). The song's ticks are the same
+in number, the last `lag` ticks' cells never written.
 
 | register | value |
 |---|---|

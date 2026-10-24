@@ -18,6 +18,9 @@ FILT = "[{cut:'v + 9',res:15,route:7,mode:16,vol:15},end]"
 SONGS = {
     "ending": doc(),
     "looping": doc(phrase="[C4.i1,E*2,-*2]", ins=f"{{ad:9,sr:240,ctrl:{ARP}}}", ending=0),
+    "lagging": doc(
+        phrase="[C4.i1,E*2,-*2]", ins=f"{{ad:9,sr:240,ctrl:{ARP}}}", ending=0, head="lag:2\n"
+    ),
     "restart": doc(
         phrase="[C4.i1,D,-*2]",
         ins="{ad:9,sr:240,ctrl:[{ctrl:65,note:+0},end],restart:r1}",

@@ -1,4 +1,4 @@
-unitracker:2.2
+unitracker:2.3
 meta:{title:Crosseyed,author:Ilija Melentijevic (iLKke),released:2021 Funkentstört}
 clock:{cycles_per_tick:19656,clock_hz:985248}
 tempo:1
@@ -86,7 +86,7 @@ mod:
 	lda w+1
 	sta v+1
 	rts
- slide(m):|
+ glissando(m):|
 	lda #m
 	asl
 	and #127
@@ -243,7 +243,7 @@ ins:
  i1:{p.freq:pitch()}
 ctrl:
  c1:[{mask:8,gate:0},end]
- c2:[{hold:2,ctrl:65,mask:0,gate:1,ad:0,sr:246,pw:pul(3,1,0),p.freq:slide(216)},{ctrl:17,mask:0,gate:0,p.freq:slide(216)},end]
+ c2:[{hold:2,ctrl:65,mask:0,gate:1,ad:0,sr:246,pw:pul(3,1,0),p.freq:glissando(216)},{ctrl:17,mask:0,gate:0,p.freq:glissando(216)},end]
  c3:[{ctrl:65,mask:0,gate:1,note:+0,ad:1,sr:152,pw:pul(3,8,0),k2.cut:acid(2,0,16384),res:15,route:7,mode:16},{k2.cut:acid(8,0,512)},{mask:0,gate:0,note:+0},{k2.cut:acid(8,0,512)},{},{loop:3}]
  c4:[{mask:8,gate:0},end]
  c5:[{hold:2,ctrl:81,mask:4,gate:1,note:+12,ad:0,sr:68,pw:pul(3,1,0)},{mask:4,gate:0},end]
