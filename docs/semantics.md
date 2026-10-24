@@ -52,6 +52,12 @@ for a template of no parameter. Its parameters are distinct lowercase names, non
 order. An `x` section, a `mod` section in a row's `def`, and a signature or a call before
 `1.23` are refused.
 
+In `1.23` the other definitions that are not song content stand at the top level too, after the
+`mod` section and before `init`: `restart:`, `ins:`, `ctrl:`, `pw:` and `filter:`, each
+optional, in that order, records at 2 spaces, named records and templates mixed. A row's `def`
+keeps only its `phrase` section; a `restart`, `ins`, `ctrl`, `pw` or `filter` section in a
+row's `def` is refused in `1.23`, and a top-level one before it.
+
 A definition may stand inline at its one use, and plays as a named definition used only there:
 a program after its kind in a row's `run:` or a `!run:` (`run: pw[{pw: 5}, end]`,
 `!run:ctrl[{ctrl: 64}, end]`), whose slot its kind names; an instrument after an event's note

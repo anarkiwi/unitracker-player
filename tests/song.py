@@ -4,8 +4,10 @@ import re
 
 import numpy as np
 from unitracker_grammar import parse
+from unitracker_grammar.document import Section, printed, read, replace
 
 HEAD = "unitracker: 1.21\nmeta: {title: T}\n"
+TOP = ("restart", "ins", "ctrl", "pw", "filter")
 SECTIONS = ("restart", "ins", "ctrl", "pw", "filter", "mod", "x", "phrase")
 I1 = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end]}"
 
@@ -67,3 +69,13 @@ def reg(frames: np.ndarray, address: int) -> list[int]:
 def timeline(starts: list[int], values: list, length: int) -> list:
     """The value of the latest start at or before each tick of ``length`` ticks."""
     return [values[max(i for i, s in enumerate(starts) if s <= t)] for t in range(length)]
+
+
+def toplevel(text: str) -> str:
+    """``text`` with its rows' restart, ins, ctrl, pw and filter sections moved to the top
+    level, format 1.23's place for them."""
+    model = read(text)
+    defs = {kind: list(dict(model.records(kind)).items()) for kind in TOP}
+    rows = [replace(r, defs=tuple(s for s in r.defs if s.kind not in TOP)) for r in model.rows]
+    sections = tuple(Section(kind, tuple(records)) for kind, records in defs.items() if records)
+    return printed(replace(model, defs=sections, rows=tuple(rows), layout=()))

@@ -1,7 +1,7 @@
 """Rewrites a canonical document with every definition inline at its use: instruments, programs,
 phrases and expression instances from the rows' ``def`` sections, and format 1.23's template
 calls as anonymous code bodies and quoted expressions, the sections and the top-level ``mod``
-section dropped."""
+section dropped, as are format 1.23's top-level definition sections."""
 
 import functools
 
@@ -114,6 +114,8 @@ class _Inliner:
                 plays = row.children[-1]
                 out = out[: -len(dropped)] + [(row.meta.start_pos, _span(plays)[0], "  - play: ")]
         out += [(*_span(m), "") for m in self.tree.find_data("mods")]
+        top = [c for c in self.tree.children if isinstance(c, Tree) and c.data == "section"]
+        out += [(*_span(s), "") for s in top if s.children[0].type in DEFINED]
         return out
 
 

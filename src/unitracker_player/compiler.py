@@ -18,6 +18,7 @@ from unitracker_player.document import (
     Param,
     Program,
     Row,
+    TOP,
     Slot,
     note_number,
     read,
@@ -185,6 +186,13 @@ class _Compiler:
             raise PlayError(f"state, code, signatures and the mod section: format {VERSION}'s")
         if self.calls and (doc.expressions or doc.top != doc.templates.keys()):
             raise PlayError(f"x, a row's mod: format {VERSION} calls its mod section's templates")
+        if self.calls and doc.rows & set(TOP):
+            raise PlayError(
+                f"a row's {', '.join(sorted(doc.rows & set(TOP)))}: format {VERSION} "
+                "defines restart, ins, ctrl, pw and filter at the top level"
+            )
+        if not self.calls and doc.at_top:
+            raise PlayError(f"top-level {', '.join(sorted(doc.at_top))}: format {VERSION}'s")
         if head.version in OWNED:
             if head.slots:
                 raise PlayError(f"slots: format {SLOTTED}'s")

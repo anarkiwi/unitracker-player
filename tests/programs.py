@@ -29,7 +29,7 @@ def _records(tree: Tree, types: dict):
 
 def _line(key: Token, body: Tree) -> tuple[int, int]:
     """The span of a record's line, its indentation and its newline included."""
-    return key.start_pos - 8, body.meta.end_pos + 1
+    return key.start_pos - key.column + 1, body.meta.end_pos + 1
 
 
 def _bare(node: Tree):
@@ -85,6 +85,7 @@ class _Expander:
         for key, body, _ in _records(self.tree, SIGNED):
             name, declared = C.signature(key)
             self.forms[name] = SIGNED[key.type], declared, body, _line(key, body)
+            self.indent = " " * (key.column - 1)
 
     def render(self, start: int, end: int, bag: dict) -> str:
         """``[start, end)`` with each parameter its value in ``bag``, each call of a program
@@ -124,7 +125,7 @@ class _Expander:
         if call not in self.names:
             name = f"{PREFIX[self.forms[call.name][0]]}{next(self.number)}"
             self.names[call] = name
-            line = f"        {name}: {self.body(call)}\n"
+            line = f"{self.indent}{name}: {self.body(call)}\n"
             self.lines.setdefault(call.name, []).append(line)
         return self.names[call]
 
@@ -133,7 +134,7 @@ class _Expander:
         for name in self.forms:
             text = text.replace(f"\0{name}\0", "".join(self.lines.get(name, [])))
         text = re.sub(r"(run: |!run:)(?:ctrl|pw|filter):", r"\1", text)
-        return re.sub(r"      (?:restart|ctrl|pw|filter):\n(?! {8})", "", text)
+        return re.sub(r"(?m)^( *)(?:restart|ctrl|pw|filter):\n(?!\1  )", "", text)
 
 
 def expanded(text: str) -> str:
@@ -141,20 +142,40 @@ def expanded(text: str) -> str:
     return _Expander(text).document()
 
 
+TOP = ("restart", "ins", "ctrl", "pw", "filter")
 FIELDS = {"ins_ctrl": "ctrl", "ins_restart": "restart", "ins_pw": "pw", "ins_filter": "filter"}
 
 
 def _lifted(tree: Tree):
-    """``(row, kind, program)`` of each instrument's program field in a row's sections, the one
-    pulse or filter field where it is a program."""
-    for row in tree.find_data("row"):
-        for node in row.iter_subtrees():
-            programs = [c for c in node.children if isinstance(c, Tree)][:1]
-            if node.data not in FIELDS or not programs:
-                continue
-            body = programs[0].children[0] if programs[0].data == "modulation" else programs[0]
-            if isinstance(body, Tree) and body.data == "program":
-                yield row, FIELDS[node.data], body
+    """``(kind, program)`` of each instrument's program field, the one pulse or filter field
+    where it is a program."""
+    for node in tree.iter_subtrees_topdown():
+        programs = [c for c in node.children if isinstance(c, Tree)][:1]
+        if node.data not in FIELDS or not programs:
+            continue
+        body = programs[0].children[0] if programs[0].data == "modulation" else programs[0]
+        if isinstance(body, Tree) and body.data == "program":
+            yield FIELDS[node.data], body
+
+
+def _placed(text: str, tree: Tree, lines: dict) -> list:
+    """The edits adding each kind's ``lines`` to its top-level section, or a new one where the
+    kinds' order puts it."""
+    top = {
+        (NAMED | SIGNED | {"INS": "ins"})[s.children[0].type]: s
+        for s in tree.children
+        if isinstance(s, Tree) and s.data == "section"
+    }
+    end = re.search(r"(?m)^(?:init: |song:\n)", text).start()
+    edits = []
+    for k, kind in enumerate(TOP):
+        if kind in top and kind in lines:
+            at = top[kind].children[-1].meta.end_pos + 1
+            edits.append((at, at, "".join(lines[kind])))
+        elif kind in lines:
+            at = min([top[later].meta.start_pos for later in TOP[k:] if later in top] + [end])
+            edits.append((at, at, f"{kind}:\n" + "".join(lines[kind])))
+    return edits
 
 
 def _template(body: Tree, edits: list) -> tuple[str, str]:
@@ -208,12 +229,12 @@ def templated(text: str) -> str:
         edits.append((key.start_pos, key.end_pos, f"t_{key}({declared})"))
         calls[str(key)] = f"t_{key}({args})"
     refs = _references(tree, calls)
-    for k, (row, kind, body) in enumerate(_lifted(tree)):
+    lines = {}
+    for k, (kind, body) in enumerate(_lifted(tree)):
         span = body.meta.start_pos, body.meta.end_pos
         inner = [r for r in refs if span[0] <= r[0] < span[1]]
         refs = [r for r in refs if r not in inner]
         declared, args = _template(body, inner)
         edits.append((*span, f"t{k}({args})"))
-        line = f"      {kind}:\n        t{k}({declared}): {_edited(text, *span, inner)}\n"
-        edits.append((row.children[-1].meta.start_pos - len("    play: "),) * 2 + (line,))
-    return _edited(text, 0, len(text), edits + refs)
+        lines.setdefault(kind, []).append(f"  t{k}({declared}): {_edited(text, *span, inner)}\n")
+    return _edited(text, 0, len(text), edits + refs + _placed(text, tree, lines))

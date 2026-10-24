@@ -34,7 +34,9 @@ code reads the note table as `F.lo` / `F.hi`. Any definition may also stand inli
 `!pw:'v + 40'`) and plays as its named form. A program record may be a template keyed by its
 signature (`arp(a, b): [{ctrl: 65, note: +a}, {wait: a, note: -b}, {loop: 0}]`), which a call
 binds wherever a program's name stands (`ctrl: arp(7,4)`, `restart: hr(2,9,220)`,
-`run: ctrl:arp(7,4)`) and plays as its program with each parameter its argument.
+`run: ctrl:arp(7,4)`) and plays as its program with each parameter its argument. In 1.23 the
+`restart`, `ins`, `ctrl`, `pw` and `filter` sections are top-level, after `mod:`; a row's `def:`
+keeps its phrases.
 
 `read(text)` returns the document as plain dataclasses. A text outside the grammar raises
 `unitracker_grammar.CanonicalError`; a document the player refuses raises `PlayError`.
