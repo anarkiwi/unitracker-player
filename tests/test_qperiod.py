@@ -1,4 +1,4 @@
-"""An expression's proved period in φ holds on its values."""
+"""An expression's proved period in phi holds on its values."""
 
 import random
 
@@ -26,14 +26,14 @@ def _holds(text: str, found, rng: random.Random) -> bool:
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("16*abs((φ - (φ >= 11) - (φ >= 15) - 32) % 128 - 64) + 512", (15, 128)),
-        ("(-(φ % 3 == 0) + 1)*(128*((φ - (φ + 3) // 3 - 2) % 10 >= 5) - 64) + v", (0, 15)),
-        ("((v - F(N)) % 65536)*(φ >= 1) + 139*(φ == 11) + F(N) - 139", (12, 1)),
+        ("16*abs((phi - (phi >= 11) - (phi >= 15) - 32) % 128 - 64) + 512", (15, 128)),
+        ("(-(phi % 3 == 0) + 1)*(128*((phi - (phi + 3) // 3 - 2) % 10 >= 5) - 64) + v", (0, 15)),
+        ("((v - F(N)) % 65536)*(phi >= 1) + 139*(phi == 11) + F(N) - 139", (12, 1)),
         ("(v - G[N]) % 65536 + G[N]", (0, 1)),
-        ("v + min(3, φ) + max(0, 4 - φ) + F(φ % 7) + G[φ % 5 - 1]", (4, 35)),
-        ("v + G[φ - 3] + F(120 - φ)", (121, 1)),
-        ("v + φ", None),
-        ("v * (φ // 4)", None),
+        ("v + min(3, phi) + max(0, 4 - phi) + F(phi % 7) + G[phi % 5 - 1]", (4, 35)),
+        ("v + G[phi - 3] + F(120 - phi)", (121, 1)),
+        ("v + phi", None),
+        ("v * (phi // 4)", None),
     ],
 )
 def test_period(text, expected):
@@ -45,7 +45,7 @@ def test_period(text, expected):
 
 def _random(rng: random.Random, depth: int) -> str:
     if depth == 0 or rng.random() < 0.3:
-        return rng.choice(["v", "φ", "N", str(rng.randint(-40, 40))])
+        return rng.choice(["v", "phi", "N", str(rng.randint(-40, 40))])
     a, b = _random(rng, depth - 1), _random(rng, depth - 1)
     form = rng.choice(["+", "-", "*", "//", "%", "cmp", "abs", "min", "max", "T", "F"])
     if form == "cmp":

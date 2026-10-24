@@ -53,8 +53,8 @@ def _edit(text: str, *pairs) -> str:
 
 PW = doc("[C4.i1!run:pw1, -*3]", pw={"pw1": "v + 3"})
 REMOVED = {
-    "version-1.23": _edit(doc(), ("unitracker: 2.0", "unitracker: 1.23")),
-    "version-2.1": _edit(doc(), ("unitracker: 2.0", "unitracker: 2.1")),
+    "version-1.23": _edit(doc(), ("unitracker: 2.1", "unitracker: 1.23")),
+    "version-2.0": _edit(doc(), ("unitracker: 2.1", "unitracker: 2.0")),
     "hold-line": _edit(doc(), ("voices: 1\n", "voices: 1\nhold: {pw: [step]}\n")),
     "instance": _edit(doc("[C4.i1!pw:1, -*3]"), ("!pw:1", "!pw:x1")),
     "set": _edit(doc("[C4.i1!pw:1, -*3]"), ("!pw:1", "!set:pw:1")),
@@ -66,16 +66,23 @@ REMOVED = {
     "shape": _edit(doc(ins="{pw: v + 1}"), ("pw: v + 1", "mod: ramp {step: 5}")),
     "name-keyed-template": _edit(doc(mods={"up()": "v + 1"}), ("up(): v + 1", "up: v + 1")),
     "kind-prefixed-run": _edit(PW, ("!run:pw1", "!run:pw:pw1")),
-    "row-section": _edit(
+    "row-phrases": _edit(
         PW,
-        ("pw:\n  pw1: v + 3\n", ""),
-        ("      phrase:", "      pw:\n        pw1: v + 3\n      phrase:"),
+        (
+            "phrase:\n  p1: [C4.i1!run:pw1, -*3]\nsong:\n  - play: [p1]",
+            "song:\n  - def:\n      phrase:\n        p1: [C4.i1!run:pw1, -*3]\n    play: [p1]",
+        ),
     ),
+    "phi": _edit(doc(ins="{pw: v + phi}"), ("v + phi", "v + φ")),
+    "resfilt": _edit(doc("[C4.i1!res:1!route:2, -*3]"), ("!res:1!route:2", "!resfilt:1/2")),
+    "ctrl-mask": _edit(doc(ins="{ctrl: [{ctrl: 65, mask: 8}, end]}"), ("65, mask: 8", "65^8")),
+    "route-add": _edit(doc(ins="{ctrl: [{route_on: 0}, end]}"), ("route_on: 0", "route: +")),
+    "pw-program-of-one-binding": _edit(PW, ("pw1: v + 3", "pw1: [{pw: v + 3}, end]")),
 }
 
 
 @pytest.mark.parametrize("text", REMOVED.values(), ids=REMOVED.keys())
 def test_removed_constructs_are_canonical_errors(text):
-    """Another version and the spellings format 2.0 dropped are outside the grammar."""
+    """Another version and the spellings formats 2.0 and 2.1 dropped are outside the grammar."""
     with pytest.raises(CanonicalError):
         read(text)

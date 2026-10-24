@@ -6,6 +6,7 @@ from song import cutoff, doc, freq, pulse
 from unitracker_grammar import CanonicalError
 from unitracker_grammar import frequency as F
 from unitracker_grammar.code import CodeError
+from unitracker_grammar.expr import ExpressionError
 
 from unitracker_player import PlayError, play, read
 from unitracker_player.cli import sid_main
@@ -99,7 +100,8 @@ def test_a_16_bit_add_plays_as_its_expression(cell, d):
 
 def _vibrato(template: str, head: str = "") -> str:
     ins = (
-        f"{{ad: 9, sr: 240, {GATE}, base.freq: (φ < 1)*F(N) + (φ >= 1)*v," " wob.freq: vib(3,40,6)}"
+        f"{{ad: 9, sr: 240, {GATE}, base.freq: (phi < 1)*F(N) + (phi >= 1)*v,"
+        " wob.freq: vib(3,40,6)}"
     )
     slots = "slots: {freq: {base: {}, wob: {}}}\n"
     return doc(ins=ins, head=slots + head, mods={"vib(c, s, w)": template})
@@ -108,7 +110,7 @@ def _vibrato(template: str, head: str = "") -> str:
 def test_a_goattracker_vibrato_on_a_state_byte_plays_as_its_expression():
     """t counts 0..w-1 and v rises by s for t < c, else falls."""
     coded = _vibrato(block(VIB), "state: {freq: {t: 1}}\n")
-    expressed = _vibrato("v + s*(φ % w < c) - s*(φ % w >= c)")
+    expressed = _vibrato("v + s*(phi % w < c) - s*(phi % w >= c)")
     base = F(48)
     steps = [40, 40, 40, -40, -40, -40] * 2
     expected = [base + sum(steps[: k + 1]) for k in range(12)]
@@ -116,7 +118,7 @@ def test_a_goattracker_vibrato_on_a_state_byte_plays_as_its_expression():
 
 
 def test_each_voice_has_its_own_state_kept_across_notes_and_bindings():
-    """A note rebinds the slot (φ back at 0) but t counts on; voice 2 starts its own t."""
+    """A note rebinds the slot (phi back at 0) but t counts on; voice 2 starts its own t."""
     ins = f"{{ad: 9, sr: 240, {GATE}, pw: cnt()}}"
     phrases = {"p1": "[C4.i1, E4.i1]", "p2": "[-, C4.i1]"}
     head = "voices: 2\ntempo: 2\nstate: {pw: {t: 1}}\n"
@@ -171,8 +173,8 @@ def test_bindings_by_a_slot_s_default_and_by_a_command_s_call():
 
 
 def test_a_call_keeps_phi_only_for_the_same_template_and_arguments():
-    """Rebinding ``k(100)`` keeps φ; ``k(200)`` and ``j(100)``, the same body, restart it."""
-    mods = {"k(b)": "b + 10*φ", "j(b)": "b + 10*φ"}
+    """Rebinding ``k(100)`` keeps phi; ``k(200)`` and ``j(100)``, the same body, restart it."""
+    mods = {"k(b)": "b + 10*phi", "j(b)": "b + 10*phi"}
     text = doc(
         "[C4.i1!pw:k(100), -!pw:k(100), -!pw:k(200), -!pw:j(200)]",
         head="tempo: 2\n",
@@ -201,16 +203,12 @@ def test_calls_bind_records_fields_rows_and_commands():
         ({"mods": {"m()": block("lda u\nsta v\nrts")}}, "pw: m()", "unknown symbol u"),
         ({"mods": {"m(d)": block(ADD)}}, "pw: m(1,2)", r"m\(1,2\): m takes 1 argument"),
         ({"mods": {"m(d)": block(ADD)}}, "pw: n(1)", "unknown modulator n"),
-        ({"mods": {"m(d)": "v + d"}}, "pw: m", "a template is bound by a call"),
-        ({"mods": {"m()": "v + 1"}}, "pw: 2*m", "a template is bound by a call"),
     ],
     ids=[
         "other-cell",
         "unknown",
         "arity",
         "undefined",
-        "name",
-        "in-expression",
     ],
 )
 def test_bindings_the_template_cannot_play_are_refused(kwargs, ins, match):
@@ -220,9 +218,18 @@ def test_bindings_the_template_cannot_play_are_refused(kwargs, ins, match):
         play(text, 2)
 
 
-def test_a_slot_s_default_binds_a_template_by_a_call():
-    text = doc(head="slots: {pw: {a: {mod: 'm'}}}\n", mods={"m()": "v + 1"})
-    with pytest.raises(PlayError, match="a template is bound by a call"):
+@pytest.mark.parametrize(
+    "head, ins, mods",
+    [
+        ("", "pw: m", {"m(d)": "v + d"}),
+        ("", "pw: 2*m", {"m()": "v + 1"}),
+        ("slots: {pw: {a: {mod: 'm'}}}\n", "pw: 1", {"m()": "v + 1"}),
+    ],
+    ids=["name", "in-expression", "slot-default"],
+)
+def test_a_template_is_bound_by_a_call(head, ins, mods):
+    text = doc(ins=f"{{ad: 9, sr: 240, {GATE}, {ins}}}", head=head, mods=mods)
+    with pytest.raises(ExpressionError, match="a template is bound by a call"):
         play(text, 2)
 
 
@@ -230,17 +237,25 @@ CLOCK = "clock: {cycles_per_tick: 19656, clock_hz: 985000}\n"
 TABLE = "ldx nn\nlda F.lo,x\nsta v\nlda F.hi,x\nsta v+1\nrts"
 
 
-def test_code_reads_the_note_table_at_the_document_s_clock():
-    """A routine reading F.lo and F.hi at nn plays F(N) at clock_hz, 0 where the word
-    overflows, as the expression F(N) does."""
-    phrase, head = "[C0.i1, A4.i1, C7.i1, B7.i1]", CLOCK + "tempo: 1\n"
+@pytest.mark.parametrize(
+    "clock, hz, rounding",
+    [
+        (CLOCK, 985000, "round"),
+        ("clock: {cycles_per_tick: 19656, clock_hz: 985240, rounding: floor}\n", 985240, "floor"),
+    ],
+)
+def test_code_reads_the_note_table_at_the_document_s_clock(clock, hz, rounding):
+    """A routine reading F.lo and F.hi at nn plays F(N) at clock_hz with its rounding, 0 where
+    the word overflows, as the expression F(N) and a note's own frequency do."""
+    phrase, head = "[C0.i1, A4.i1, C7.i1, B7.i1]", clock + "tempo: 1\n"
     ins = f"{{ad: 9, sr: 240, {GATE}, freq: nt()}}"
     coded = doc(phrase, ins=ins, head=head, mods={"nt()": block(TABLE)})
     ins = f"{{ad: 9, sr: 240, {GATE}, freq: F(N)}}"
     expressed = doc(phrase, ins=ins, head=head)
-    expected = [F(k, 985000) for k in (0, 57, 84, 95)]
-    assert expected[-1] == 0 and expected[1] != F(57)
-    assert freq(play(coded, 4)) == freq(play(expressed, 4)) == expected
+    plain = doc(phrase, ins=f"{{ad: 9, sr: 240, {GATE}}}", head=head)
+    expected = [F(k, hz, rounding) for k in (0, 57, 84, 95)]
+    assert expected[-1] == 0 and expected[1] != F(57) and expected[1] == F(57, hz) - (hz > 985000)
+    assert freq(play(coded, 4)) == freq(play(expressed, 4)) == freq(play(plain, 4)) == expected
 
 
 def test_a_looping_song_with_a_code_modulator_needs_ticks(tmp_path):

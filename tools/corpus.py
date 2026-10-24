@@ -17,14 +17,12 @@ from tqdm import tqdm
 
 def pytest_configure(config):  # pylint: disable=unused-argument
     """Records every text the canonical parser parses into ``$UNITRACKER_CORPUS``."""
-    from unitracker_grammar import canonical, document  # pylint: disable=import-outside-toplevel
+    from unitracker_grammar import canonical  # pylint: disable=import-outside-toplevel
 
     out = Path(os.environ["UNITRACKER_CORPUS"])
     out.mkdir(parents=True, exist_ok=True)
-    for lark in dict.fromkeys(
-        [canonical.parser(), getattr(document, "_parser", canonical.parser)()]
-    ):
-        lark.parse = _recording(lark.parse, out)
+    lark = canonical.parser()
+    lark.parse = _recording(lark.parse, out)
 
 
 def _recording(parse, out: Path):
@@ -38,17 +36,27 @@ def _recording(parse, out: Path):
     return recorded
 
 
-def frames(directory: Path, out: Path, ticks: int):
-    """Plays each document of ``directory``; a refused one is recorded by its error's name."""
+def frames(directory: Path, out: Path, ticks: int, first: bool = False):
+    """Plays each document of ``directory``, each with its definitions at their first use where
+    ``first``; a refused one is recorded by its error's name."""
     from unitracker_player import play  # pylint: disable=import-outside-toplevel
 
     result = {}
     for path in tqdm(sorted(directory.glob("*.yaml")), unit="doc"):
         try:
-            result[path.stem] = play(path.read_text(encoding="utf-8"), ticks)
+            text = path.read_text(encoding="utf-8")
+            result[path.stem] = play(_first_use(text) if first else text, ticks)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             result[path.stem] = np.frombuffer(type(exc).__name__.encode(), np.uint8)
     np.savez_compressed(out, **result)
+
+
+def _first_use(text: str) -> str:
+    """``text`` with its definitions at their first use."""
+    # pylint: disable-next=import-outside-toplevel
+    from unitracker_grammar.document import first_use, printed, read
+
+    return printed(first_use(read(text)))
 
 
 def diff(a: Path, b: Path) -> list[str]:
@@ -83,6 +91,7 @@ def main(argv=None) -> int:
     cmd.add_argument("directory", type=Path)
     cmd.add_argument("out", type=Path)
     cmd.add_argument("--ticks", type=int, default=3000)
+    cmd.add_argument("--first-use", action="store_true", help="each definition at its first use")
     cmd = sub.add_parser("diff")
     cmd.add_argument("a", type=Path)
     cmd.add_argument("b", type=Path)
@@ -90,7 +99,7 @@ def main(argv=None) -> int:
     cmd.add_argument("directory", type=Path)
     args = parser.parse_args(argv)
     if args.command == "frames":
-        frames(args.directory, args.out, args.ticks)
+        frames(args.directory, args.out, args.ticks, args.first_use)
         return 0
     names = diff(args.a, args.b) if args.command == "diff" else canon(args.directory)
     print("\n".join(names))

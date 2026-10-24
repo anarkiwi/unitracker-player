@@ -46,13 +46,13 @@ class _Recording(_Compiler):
 
 
 class _Periods:
-    """Each expression's period in φ, proved once; a modulator's φ reduced by it."""
+    """Each expression's period in phi, proved once; a modulator's phi reduced by it."""
 
     def __init__(self, nodes: dict, namespace: dict):
         self.nodes, self.namespace, self.memo = nodes, namespace, {}
 
     def phi(self, fn, phi: int) -> int:
-        """``phi`` reduced by ``fn``'s period, where it has one and φ is past its start."""
+        """``phi`` reduced by ``fn``'s period, where it has one and phi is past its start."""
         if id(fn) not in self.memo:
             node = self.nodes.get(id(fn))
             self.memo[id(fn)] = None if node is None else period(node, self.namespace)
@@ -62,7 +62,7 @@ class _Periods:
         return found[0] + (phi - found[0]) % found[1]
 
     def mod(self, mod):
-        """A modulator ``[fn, phi, ...]`` with its φ reduced."""
+        """A modulator ``[fn, phi, ...]`` with its phi reduced."""
         if mod is None:
             return None
         return (id(mod[0]), self.phi(mod[0], mod[1]), *mod[2:])
@@ -90,7 +90,7 @@ def _voice(voice: _Voice, t: int, periods: _Periods) -> tuple:
 
 def snapshot(player: Player, periods: _Periods) -> tuple:
     """The player's state at its current tick, every tick made relative to it and every
-    modulator's φ reduced by its expression's period."""
+    modulator's phi reduced by its expression's period."""
     t, seq = player.tick, player._seq  # pylint: disable=protected-access
     sequencer = (
         seq.tempo,

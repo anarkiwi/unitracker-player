@@ -13,7 +13,7 @@ from unitracker_player.render import render
 
 PAL_FRAME = 19656
 FIXTURE_TICKS = 1000
-ARP = "[{ctrl: 65, note: +0, pw: '16*abs(φ % 40 - 20) + 512'}, {wait: 1, note: +4}, {loop: 1}]"
+ARP = "[{ctrl: 65, note: +0, pw: '16*abs(phi % 40 - 20) + 512'}, {wait: 1, note: +4}, {loop: 1}]"
 FILT = "[{cut: 'v + 9', res: 15, route: 7, mode: 16, vol: 15}, end]"
 SONGS = {
     "ending": doc(),

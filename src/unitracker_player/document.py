@@ -7,19 +7,10 @@ from dataclasses import dataclass, field
 import ast
 
 from lark import Token, exceptions
-from unitracker_grammar import CanonicalError, parser
-from unitracker_grammar.code import (
-    Call,
-    Statements,
-    call,
-    check,
-    declare,
-    params,
-    programs,
-    signature,
-)
+from unitracker_grammar import CanonicalError, parse
+from unitracker_grammar import document as model
+from unitracker_grammar.code import Call, Statements, call, first_uses, signature
 from unitracker_grammar.expr import Nodes
-from unitracker_grammar.expr import params as expr_params
 
 NONE = None
 HOLD = "hold"
@@ -41,7 +32,7 @@ _VALUES = {
     "TEXT",
     "SQUOTED",
     "DQUOTED",
-    "CTRLMASK",
+    "ROUNDING",
     "NONE",
     "HOLD",
     "RESET",
@@ -54,7 +45,6 @@ _VALUES = {
     "PROGRAM_KIND",
     "PARAM",
     "REL_PARAM",
-    "PROGRAM_SIG",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
@@ -115,7 +105,7 @@ class Row:
 @dataclass(frozen=True)
 class Program:
     """Rows in the order they run, then ``end`` (``loop`` None) or ``{loop: k}``; ``fresh``
-    for an instrument's binding fields, whose bindings restart φ."""
+    for an instrument's binding fields, whose bindings restart phi."""
 
     rows: tuple
     loop: int | None = None
@@ -164,7 +154,7 @@ class Play:
 class Header:
     """The header lines, with their defaults; ``slots`` ``{cell: (Slot, ...)}``, ``order`` the
     phases of a tick or None, ``state`` ``{cell: ((name, size), ...)}``, ``regs`` the registers
-    before tick 0 or None."""
+    before tick 0 or None, ``rounding`` the note table's, ``round`` or ``floor``."""
 
     meta: dict = field(default_factory=dict)
     cycles_per_tick: int | None = None
@@ -175,6 +165,7 @@ class Header:
     order: tuple | None = None
     state: dict = field(default_factory=dict)
     regs: tuple | None = None
+    rounding: str = "round"
 
 
 @dataclass(frozen=True)
@@ -237,15 +228,15 @@ def _split(children) -> tuple:
     return own, rest
 
 
-def _link(key):
-    """A link of a key chain: its own key's value (one value or a tuple) before the chain's
-    rest."""
+def _link(key, form=lambda value: value):
+    """A link of a key chain: its own key's value (one value or a tuple), in ``form``, before
+    the chain's rest."""
 
     def method(_self, children):
         own, rest = _split(children)
         if not own:
             return rest
-        return _Chain([(key, own[0] if len(own) == 1 else tuple(own))] + rest)
+        return _Chain([(key, form(own[0] if len(own) == 1 else tuple(own)))] + rest)
 
     return method
 
@@ -273,27 +264,26 @@ class ToDocument(Nodes):
 
     def start(self, children):
         head, defs, timeline = {"tables": {}, "init": None}, {k: {} for k in KINDS}, []
-        for item in _values(children):
-            tag = item[0]
-            if tag in KINDS or tag == "row":
-                for kind, entries in [item] if tag in KINDS else item[1]:
-                    for name, value in entries:
-                        if name in defs[kind]:
-                            raise CanonicalError(f"{name} is defined twice")
-                        defs[kind][name] = value
-                if tag == "row":
-                    timeline.append(item[2])
+        for tag, value in _values(children):
+            if tag in KINDS:
+                for name, record in value:
+                    if name in defs[tag]:
+                        raise CanonicalError(f"{name} is defined twice")
+                    defs[tag][name] = record
+            elif tag == "row":
+                timeline.append(value)
             else:
-                head[tag] = item[1]
+                head[tag] = value
         header = Header(
             head.pop("meta"),
-            *head.pop("clock", (None, None)),
+            *(clock := head.pop("clock", (None, None)))[:2],
             head.pop("voices", 3),
             head.pop("tempo", (6, 6)),
             head.pop("slots", {}),
             head.pop("order", None),
             head.pop("state", {}),
             head.pop("regs", None),
+            *clock[2:],
         )
         return Document(
             header,
@@ -304,7 +294,8 @@ class ToDocument(Nodes):
             defs["phrase"],
             tuple(timeline),
             head["ending"],
-            *_check(defs["mod"], header.state),
+            {signature(k)[0]: v for k, v in defs["mod"].items()},
+            dict(map(signature, defs["mod"])),
         )
 
     @staticmethod
@@ -392,8 +383,7 @@ class ToDocument(Nodes):
 
     @staticmethod
     def row(children):
-        values = _values(children)
-        return ("row", values[:-1], values[-1])
+        return ("row", _values(children)[0])
 
     @staticmethod
     def ending(children):
@@ -457,14 +447,6 @@ class ToDocument(Nodes):
         return Row(timing.get("wait", 0), timing.get("hold", 1), rest)
 
     @staticmethod
-    def ctrl_value(children):
-        (value,) = _values(children)
-        if not isinstance(value, str):
-            return (value, None)
-        ctrl, mask = value.split("^")
-        return (int(ctrl) if ctrl else None, int(mask))
-
-    @staticmethod
     def note_value(children):
         (value,) = _values(children)
         return ("abs", note_number(value)) if isinstance(value, str) else ("rel", value)
@@ -473,15 +455,6 @@ class ToDocument(Nodes):
     def cell_value(children):
         values = _values(children)
         return values[0] if values else NONE
-
-    @staticmethod
-    def route_value(children):
-        values = _values(children)
-        mask = values[0] if values else 0
-        words = "".join(_words(children))
-        if words.startswith("+"):
-            return ("add", mask)
-        return ("remove", mask) if "-" in words else ("mask", mask)
 
     @staticmethod
     def run_program(children):
@@ -522,26 +495,6 @@ class ToDocument(Nodes):
     asm = code
     code_label, code_op = Statements.code_label, Statements.code_op
     code_imm, code_mem = Statements.code_imm, Statements.code_mem
-
-
-def _check(records: dict, state: dict) -> tuple[dict, dict]:
-    """The templates of the ``mod`` records by name and their ``{name: parameters}``, checked:
-    no code template's label names a state variable of ``state``, and a signature declares
-    what its body reads, no state variable among them."""
-    names = {n for variables in state.values() for n, _ in variables}
-    templates, signatures = {}, {}
-    for key, template in records.items():
-        if isinstance(template, Code):
-            check(template.statements, names)
-            used = params(template.statements)
-        else:
-            used = expr_params(template.node)
-        key, declared = declare(key, used, names)
-        signatures[key] = declared
-        if key in templates:
-            raise CanonicalError(f"{key} is defined twice")
-        templates[key] = template
-    return templates, signatures
 
 
 def _programs(defs: dict) -> tuple[dict, dict]:
@@ -590,9 +543,15 @@ def _slotted(cell: str):
 
 
 for _name, _method in {
-    **_chain("row", "wait hold ctrl gate note ad sr res route mode run filter vol".split()),
+    **_chain("row", "wait hold gate note ad sr res mode run filter vol".split()),
     **_chain("ins", "ad sr ctrl restart".split()),
-    **_chain("cmd", "run ad sr ctrl resfilt mode vol tempo vtempo".split()),
+    **_chain("cmd", "run ad sr ctrl res mode vol tempo vtempo".split()),
+    "row_ctrl": _link("ctrl", lambda c: (c, None)),
+    "row_mask": _link("ctrl", lambda m: (None, m)),
+    "row_route": _link("route", lambda m: ("mask", m)),
+    "row_route_on": _link("route", lambda m: ("add", m)),
+    "row_route_off": _link("route", lambda m: ("remove", m)),
+    "cmd_route": _link("route", lambda m: ("mask", m)),
     **{f"{chain}_{c}": _slotted(c) for chain in ("row", "cmd") for c in ("pw", "cut", "freq")},
     **{f"ins_{c}": _slotted(c) for c in ("pw", "filter", "freq")},
     **{f"slot_{k}": _slot_link(k) for k in ("mod", "hold", "reset")},
@@ -623,14 +582,11 @@ def _modulation(kind: str, fields: list, fresh: bool = False):
 
 
 def read(text: str) -> Document:
-    """The Document of canonical document ``text``."""
-    try:
-        tree = parser().parse(text)
-    except exceptions.UnexpectedInput as exc:
-        raise CanonicalError(
-            f"line {exc.line} column {exc.column}: {str(exc).splitlines()[0]}"
-        ) from exc
-    programs(tree)
+    """The Document of canonical document ``text``, its definitions at their first use moved
+    to their sections (:func:`unitracker_grammar.document.top_level`)."""
+    tree = parse(text)
+    if next(first_uses(tree), None) is not None:
+        tree = parse(model.printed(model.top_level(model.read(text))))
     try:
         return ToDocument().transform(tree)
     except exceptions.VisitError as exc:

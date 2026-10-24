@@ -67,12 +67,12 @@ class Machine:
     """One 6502 and its memory for a song: ``v`` (2 bytes), ``phi`` (2), ``nn``, ``ne`` and
     from :data:`STATE` the state of the routine's cell in zero page; each table's ``T.lo`` then
     ``T.hi`` from :data:`TABLES`, each ``max(256, len(T))`` bytes, 0 past the table; then the
-    routines' code, the note table ``F`` (``F(k)`` at ``clock_hz`` for k 0-255) laid out as a
-    table before the first routine that names it. ``image`` is the memory as laid out, what
-    every firing starts from."""
+    routines' code, the note table ``F`` (``F(k)`` at ``clock_hz`` and ``rounding`` for k
+    0-255) laid out as a table before the first routine that names it. ``image`` is the memory
+    as laid out, what every firing starts from."""
 
-    def __init__(self, tables: dict, state: dict, clock_hz: int = PAL_HZ):
-        self.clock_hz = clock_hz
+    def __init__(self, tables: dict, state: dict, clock_hz: int = PAL_HZ, rounding="round"):
+        self.clock_hz, self.rounding = clock_hz, rounding
         self.memory, self.symbols = bytearray(TOP), dict(SYMBOLS)
         self.cells, self.sizes = {}, {}
         for cell, variables in state.items():
@@ -130,7 +130,7 @@ class Machine:
             for s in statements
         ):
             start = self.top
-            self._table("F", [frequency(k, self.clock_hz) for k in range(256)])
+            self._table("F", [frequency(k, self.clock_hz, self.rounding) for k in range(256)])
             self.image[start : self.top] = self.memory[start : self.top]
         ops, labels, end = self._layout(name, statements, cell)
         code, start = _emit(name, ops, labels, bag, self.top), self.top

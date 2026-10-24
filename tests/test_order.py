@@ -7,7 +7,7 @@ from unitracker_grammar import frequency as F
 from unitracker_player import PlayError, play
 
 RESTART = (
-    "{ctrl: [{ctrl: 65, sr: 99}, {loop: 0}], pw: 10*φ + 1,"
+    "{ctrl: [{ctrl: 65, sr: 99}, {loop: 0}], pw: 10*phi + 1,"
     " restart: [{gate: 0, ad: 15, sr: 0}, {}, end]}"
 )
 ORDERS = {
@@ -57,7 +57,7 @@ def test_a_frequency_before_the_control_phase_sees_the_last_tick_s_row_note(orde
 def test_a_binding_or_program_started_after_its_phase_applies_from_the_next_tick(order, pw, ctrl):
     """A control row binding the pulse width after the pw phase fires from the next tick; a
     note starting its control program after the ctrl phase runs its first row on the next."""
-    frames = play(ordered(ORDERS[order], ins="{ctrl: [{ctrl: 65, pw: 10*φ + 1}, end]}"), 3)
+    frames = play(ordered(ORDERS[order], ins="{ctrl: [{ctrl: 65, pw: 10*phi + 1}, end]}"), 3)
     assert pulse(frames) == pw and reg(frames, 4) == ctrl
 
 

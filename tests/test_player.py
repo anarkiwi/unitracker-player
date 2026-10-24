@@ -62,9 +62,9 @@ def test_a_pulse_expression_wraps_to_12_bits():
 
 @pytest.mark.parametrize("voice", [1, 2])
 def test_a_filter_program_drives_the_shared_filter(voice):
-    """The cutoff wraps to 11 bits and splits as cut & 7 / cut >> 3, `route: +` sets the
+    """The cutoff wraps to 11 bits and splits as cut & 7 / cut >> 3, `route_on: 0` sets the
     voice's bit beside the resonance and mode | vol fills $D418."""
-    ins = "{filter: [{cut: v + 300, res: 9, route: +, mode: 16, vol: 15}, end]}"
+    ins = "{filter: [{cut: v + 300, res: 9, route_on: 0, mode: 16, vol: 15}, end]}"
     phrases = {"p1": "[C4.i1, -*3]", "p2": "[-*4]"}
     rows = ("[p1, p2]" if voice == 1 else "[p2, p1]",)
     frames = play(doc(phrases, ins, rows, head="voices: 2\n"))
@@ -114,7 +114,7 @@ def test_step_boundaries(head, phrase, starts):
     "init, address, expected",
     [
         ("-!vol:15", 0x18, [15] * 24),
-        ("-!resfilt:2/5", 0x17, [2 << 4 | 5] * 24),
+        ("-!res:2!route:5", 0x17, [2 << 4 | 5] * 24),
         ("E4.i1*3", 0, [F(52) & 255] * 24),
         ("E4.i1", 5, [9] * 24),
     ],
@@ -207,7 +207,7 @@ HR3 = "[{hold: 2, gate: 0}, {ctrl: 9}, {}, end]"
         ("[C4.i1, off, on!sr:155, -]", 6, [240] * 11 + [155] * 13),
         ("[C4.i1, -!sr:155!vol:9, -*2]", 6, [240] * 5 + [155] * 19),
         ("[C4.i1, -!sr:155!vol:9, -*2]", 24, [0] * 6 + [9] * 18),
-        ("[C4.i1, off!resfilt:3/1, -*2]", 23, [0] * 6 + [0x31] * 18),
+        ("[C4.i1, off!res:3!route:1, -*2]", 23, [0] * 6 + [0x31] * 18),
     ],
 )
 def test_a_note_less_event_splits_at_its_restart_lookahead(phrase, address, expected):
@@ -220,7 +220,7 @@ def test_a_note_less_event_splits_at_its_restart_lookahead(phrase, address, expe
 def test_a_note_less_events_filter_program_starts_on_its_step():
     """A `-` event's !run of a filter program, as its other filter commands, applies on its step,
     not its restart's last lookahead row."""
-    frames = play(doc("[C4.i1, -!run:f1, -*2]", LEAD % HR3, filter={"f1": "[{cut: 1024}, end]"}))
+    frames = play(doc("[C4.i1, -!run:f1, -*2]", LEAD % HR3, filter={"f1": "1024"}))
     assert cutoff(frames) == [0] * 6 + [1024] * 18
 
 
@@ -263,9 +263,9 @@ def test_a_notes_envelope_commands_apply_with_its_restarts_first_tick_row(
 def test_a_note_s_pulse_program_rebinds_after_its_command_and_another_note_leaves_it():
     """C4's pulse program row runs in the pulse phase, after the events, and rebinds the slot
     its command bound; a later command binds it, and D4's instrument, with no pulse program,
-    leaves the binding and its φ."""
+    leaves the binding and its phi."""
     ins = {"i1": "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], pw: 2000}", "i2": BARE}
-    frames = play(doc("[C4.i1!pw:'1000 + φ', -!pw:'1000 + φ', D4.i2, -]", ins))
+    frames = play(doc("[C4.i1!pw:'1000 + phi', -!pw:'1000 + phi', D4.i2, -]", ins))
     assert pulse(frames) == [2000] * 6 + [1000 + t for t in range(18)]
 
 
@@ -297,7 +297,7 @@ def test_legato_changes_only_the_event_note(second, gates):
 R24 = range(24)
 CASES = {
     "freq-command-outlasts-a-note": (
-        doc(phrase="[C4.i1!freq:'F(N) + 3*φ', -, D4, -]"),
+        doc(phrase="[C4.i1!freq:'F(N) + 3*phi', -, D4, -]"),
         freq,
         [F(48 if t < 12 else 50) + 3 * t for t in R24],
     ),
@@ -309,17 +309,17 @@ CASES = {
     "freq-negative": (doc(phrase="[C4.i1!freq:-3, -*3]"), freq, [F(48) - 3] * 24),
     "freq-int": (doc(phrase="[C4.i1!freq:7, -*3]"), freq, [F(48) + 7] * 24),
     "freq-command-rebinds-the-instrument-s-slot": (
-        doc(ins="{freq: F(N) + φ}", phrase="[C4.i1, -!freq:+0, -!freq:none, -]"),
+        doc(ins="{freq: F(N) + phi}", phrase="[C4.i1, -!freq:+0, -!freq:none, -]"),
         freq,
         [F(48) + (t if t < 6 else 0) for t in R24],
     ),
     "freq-hold-keeps-a-slide": (
-        doc(phrase="[C4.i1!freq:'F(N) + φ', -!freq:hold, -*2]"),
+        doc(phrase="[C4.i1!freq:'F(N) + phi', -!freq:hold, -*2]"),
         freq,
         [F(48) + min(t, 5) for t in R24],
     ),
     "freq-hold-ends-the-program-modulator": (
-        doc(ins="{freq: F(N) + φ}", phrase="[C4.i1, -!freq:hold, -*2]"),
+        doc(ins="{freq: F(N) + phi}", phrase="[C4.i1, -!freq:hold, -*2]"),
         freq,
         [F(48) + min(t, 5) for t in R24],
     ),
@@ -342,12 +342,12 @@ CASES = {
         [F(48) + (5 if t < 10 else 50) for t in R24],
     ),
     "freq-row-none-returns-to-the-note": (
-        doc(ins="{ctrl: [{ctrl: 65, freq: F(N) + φ}, {wait: 2, freq: none}, end]}"),
+        doc(ins="{ctrl: [{ctrl: 65, freq: F(N) + phi}, {wait: 2, freq: none}, end]}"),
         freq,
         [F(48) + (t if t < 3 else 0) for t in R24],
     ),
     "freq-row-hold": (
-        doc(ins="{ctrl: [{ctrl: 65, freq: F(N) + φ}, {wait: 2, freq: hold}, end]}"),
+        doc(ins="{ctrl: [{ctrl: 65, freq: F(N) + phi}, {wait: 2, freq: hold}, end]}"),
         freq,
         [F(48) + min(t, 2) for t in R24],
     ),
@@ -376,12 +376,12 @@ CASES = {
         [100 * (min(t, 5) + 1) for t in R24],
     ),
     "pw-keep": (
-        doc(ins="{pw: 100*φ + 1}", phrase="[C4.i1, D4!pw, -*2]"),
+        doc(ins="{pw: 100*phi + 1}", phrase="[C4.i1, D4!pw, -*2]"),
         pulse,
         [100 * t + 1 for t in R24],
     ),
     "pw-restart": (
-        doc(ins="{pw: 100*φ + 1}", phrase="[C4.i1, D4, -*2]"),
+        doc(ins="{pw: 100*phi + 1}", phrase="[C4.i1, D4, -*2]"),
         pulse,
         [100 * (t if t < 6 else t - 6) + 1 for t in R24],
     ),
@@ -396,12 +396,12 @@ CASES = {
         [100 * (min(t, 2) + 1) + max(t - 5, 0) for t in R24],
     ),
     "pw-from-ctrl-row": (
-        doc(ins="{ctrl: [{ctrl: 65, pw: 100*φ + 50}, end]}"),
+        doc(ins="{ctrl: [{ctrl: 65, pw: 100*phi + 50}, end]}"),
         pulse,
         [100 * t + 50 for t in R24],
     ),
     "pw-run-from-ctrl": (
-        doc(ins="{ctrl: [{ctrl: 65, run: pw1}, end]}", pw={"pw1": "[{pw: v + 1000}, end]"}),
+        doc(ins="{ctrl: [{ctrl: 65, run: pw1}, end]}", pw={"pw1": "v + 1000"}),
         pulse,
         [1000 * (t + 1) % 4096 for t in R24],
     ),
@@ -448,12 +448,12 @@ CASES = {
     ),
     "cut-constant": (doc(phrase="[-!cut:1000, -*3]"), cutoff, [1000] * 24),
     "cut-keep": (
-        doc(ins="{filter: 8*φ + 8}", phrase="[C4.i1, D4!filter, -*2]"),
+        doc(ins="{filter: 8*phi + 8}", phrase="[C4.i1, D4!filter, -*2]"),
         cutoff,
         [8 * t + 8 for t in R24],
     ),
     "cut-restart": (
-        doc(ins="{filter: 8*φ + 8}", phrase="[C4.i1, D4, -*2]"),
+        doc(ins="{filter: 8*phi + 8}", phrase="[C4.i1, D4, -*2]"),
         cutoff,
         [8 * (t if t < 6 else t - 6) + 8 for t in R24],
     ),
@@ -463,7 +463,7 @@ CASES = {
         [1024] * 24,
     ),
     "ctrl-mask": (
-        doc(ins="{ctrl: [{ctrl: 65^8}, {ctrl: 17}, {ctrl: ^1}, end]}"),
+        doc(ins="{ctrl: [{ctrl: 65, mask: 8}, {ctrl: 17}, {mask: 1}, end]}"),
         lambda f: reg(f, 4),
         [(65 ^ 8) & 0xFE | 1, (17 ^ 8) & 0xFE | 1] + [17] * 22,
     ),
@@ -493,7 +493,7 @@ CASES = {
         [F(k) for k in [48, 48, 52, 52, 55, 55] + [55] * 18],
     ),
     "run-f1-command": (
-        doc(phrase="[C4.i1!run:f1, -*3]", filter={"f1": "[{cut: 7}, end]"}),
+        doc(phrase="[C4.i1!run:f1, -*3]", filter={"f1": "7"}),
         cutoff,
         [7] * 24,
     ),
@@ -508,13 +508,13 @@ CASES = {
         [F(48) + 5] * 24,
     ),
     "freq-row-expr": (
-        doc(ins="{ctrl: [{ctrl: 65, note: +0, freq: F(N) + 2*φ}, end]}"),
+        doc(ins="{ctrl: [{ctrl: 65, note: +0, freq: F(N) + 2*phi}, end]}"),
         freq,
         [F(48) + 2 * t for t in R24],
     ),
     "route": (
         doc(
-            ins="{filter: [{route: 7}, {route: '- 2'}, {route: + 8}, {route: '-'},"
+            ins="{filter: [{route: 7}, {route_off: 2}, {route_on: 8}, {route_off: 0},"
             " {route: 31}, end]}"
         ),
         lambda f: reg(f, 0x17)[:5],
@@ -531,7 +531,7 @@ CASES = {
         [3, 4],
     ),
     "commands": (
-        doc(ins=BARE, phrase="[C4.i1!ad:1!sr:2!ctrl:17!resfilt:15/3!mode:32!vol:7, -*3]"),
+        doc(ins=BARE, phrase="[C4.i1!ad:1!sr:2!ctrl:17!res:15!route:3!mode:32!vol:7, -*3]"),
         lambda f: [reg(f, a)[0] for a in (4, 5, 6, 0x17, 0x18)],
         [17, 1, 2, 0xF3, 32 | 7],
     ),

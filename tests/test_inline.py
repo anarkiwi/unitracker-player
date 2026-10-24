@@ -28,7 +28,7 @@ NAMED = {
             "c1": "[{ctrl: 65, note: +0}, {wait: 1, note: +7, run: pw2}, end]",
             "c2": "[{ctrl: 17}, end]",
         },
-        pw={"pw1": "v + 3*φ", "pw2": "[{pw: 800}, {wait: 2, pw: v + 9}, {loop: 1}]"},
+        pw={"pw1": "v + 3*phi", "pw2": "[{pw: 800}, {wait: 2, pw: v + 9}, {loop: 1}]"},
         filter={"f1": "[{cut: 300, res: 9, route: 1, mode: 16, vol: 15}, end]", "f2": "v + 2"},
     ),
     "calls": (
@@ -36,7 +36,7 @@ NAMED = {
             "[C4.i1!pw:add(-7)!wob.freq:vib(3,40,6), D4!b.pw:cnt()!cut:walk(30),"
             " -!freq:note(), E5, -*6]",
             f"{{ad: 9, sr: 240, {GATE}, pw: add(300), filter: walk(5),"
-            " base.freq: (φ < 1)*F(N) + (φ >= 1)*v}",
+            " base.freq: (phi < 1)*F(N) + (phi >= 1)*v}",
             head="clock: {cycles_per_tick: 19656, clock_hz: 985000}\ntempo: 2\n"
             "slots: {freq: {base: {}, wob: {}}, pw: {a: {mod: walk(2)}, b: {}}}\n"
             "state: {freq: {t: 1}, pw: {q: 1}}\n",
@@ -94,7 +94,7 @@ def test_inline_definitions_are_read_as_anonymous_named_ones():
 
 
 def test_an_anonymous_body_keeps_phi_for_the_same_text():
-    """Rebinding the same body keeps φ; another text restarts it."""
+    """Rebinding the same body keeps phi; another text restarts it."""
     phi = "asm{lda phi; sta v; rts}"
     other = "asm{lda phi; sta v; clc; rts}"
     text = doc(f"[C4.i1!pw:{phi}, -!pw:{phi}, -!pw:{other}, -]", head="tempo: 2\n")
@@ -104,7 +104,7 @@ def test_an_anonymous_body_keeps_phi_for_the_same_text():
 @pytest.mark.parametrize(
     "text, error, match",
     [
-        (doc("[C4.i1!pw:asm{lda #c; sta v; rts}]"), PlayError, "reads no parameter"),
+        (doc("[C4.i1!pw:asm{lda #c; sta v; rts}]"), CodeError, "anonymous body reads"),
         (
             doc("[C4.i1!pw:asm{t:; rts}]", head="state: {pw: {t: 1}}\n"),
             CodeError,

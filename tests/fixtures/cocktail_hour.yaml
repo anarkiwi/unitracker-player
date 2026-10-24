@@ -1,4 +1,4 @@
-unitracker: 2.0
+unitracker: 2.1
 meta: {title: Cocktail Hour, author: Esteban Trujillo (et1999cc), released: 2023 Hokuto Force}
 clock: {cycles_per_tick: 19656, clock_hz: 985000}
 tempo: 6
@@ -300,121 +300,116 @@ filter:
     {cut: v}, end]
   f2: [{cut: 64, res: 1, route: 1, mode: 48}, {cut: v}, end]
   f3: [{cut: 128, res: 15, route: 1, mode: 96}, {cut: v}, end]
+phrase:
+  p0: [-, -!tempo:6]
+  p1: [C3.i1!tempo:3, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1,
+    -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -, E2.i3, -,
+    E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -, G2.i3, -, E4.i4, off,
+    G2.i3, -, C3.i1, -, E4.i4, off, D2.i3, -, E4.i4, off]
+  p2: [C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -, E4.i4!run:c5,
+    off, C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -, E4.i4!run:c5,
+    off, C3.i1, -, B1.i3, -, F#4.i4!run:c6, off, B1.i3, -, C3.i1, -, F#4.i4!run:c6, off, B2.i3, -, F#4.i4!run:c6,
+    off, C3.i1, -, B1.i3, -, F#4.i4!run:c7, off, B1.i3, -, C3.i1, -, F#4.i4!run:c7, off, D2.i3, -, F#4.i4!run:c7,
+    off]
+  p3: [C3.i1, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -,
+    E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -, E2.i3, -, D4.i4!run:c8,
+    off, E2.i3, -, C3.i1, -, D4.i4!run:c8, off, E3.i3, -, D4.i4!run:c8, off, C3.i1, -, G2.i3, -, D4.i4!run:c8,
+    off, G2.i3, -, C3.i1, -, D4.i4!run:c8, off, D2.i3, -, E4.i4, off]
+  p4: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -,
+    C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, C2.i3, -, E4.i4,
+    off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3, -, E4.i4, off, D2.i3,
+    -, C3.i1, -, E4.i4, off, D#2.i3, -, E4.i4, off]
+  p5: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -,
+    C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, C2.i3, -, E4.i4,
+    off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, B1.i3, -, E4.i4, off, B1.i3,
+    -, C3.i1, -, E4.i4, off, B2.i3, -, E4.i4, off]
+  p6: [C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -, E4.i4!run:c5,
+    off, C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -, E4.i4!run:c5,
+    off, C3.i1, -, B1.i3, -, D4.i4!run:c9, off, B1.i3, -, C3.i1, -, D4.i4!run:c9, off, B2.i3, -, D4.i4!run:c9,
+    off, C3.i1, -, B1.i3, -, D4.i4!run:c9, off, B1.i3, -, C3.i1, -, D4.i4!run:c9, off, D2.i3, -, D4.i4!run:c9,
+    off]
+  p7: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -,
+    C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3, -, D4.i4!run:c9,
+    off, D2.i3, -, C3.i1, -, D4.i4!run:c9, off, D3.i3, -, D4.i4!run:c9, off, C3.i1, -, E2.i3, -, E4.i4,
+    off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off]
+  p8: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -,
+    C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3, -, D4.i4!run:c9,
+    off, D2.i3, -, C3.i1, -, D4.i4!run:c9, off, D3.i3, -, D4.i4!run:c9, off, C3.i1, -, G2.i3, -, D4.i4!run:c10,
+    off, G2.i3, -, C3.i1, -, D4.i4!run:c10, off, D2.i3, -, D4.i4!run:c10, off]
+  p9: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -,
+    C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3, -, off,
+    -, D2, -, off, -*3, D3, -, off, -, C3.i1, -, B1.i3, -, off, -, B1, -, off, -*3, B2, -, off, -]
+  p10: [C3.i1!tempo:3, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off,
+    C3.i1, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -*7,
+    C3, -*7, C3, -*7, C3, -*7]
+  p11: [E1.i3!sr:236, -*7, off!tick.freq:vib(0,4,16), -*55]
+  p12: [-!tick.freq:none, -*3]
+  p13: [-*64]
+  p14: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3), -*5, A4,
+    -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, A4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3),
+    -*23, A4, -*3, A#4, -, -!sr:40, -]
+  p15: [B4.i5, -*3, -!tick.freq:vibn(0,2,3), -*3, A4, -, -!sr:40, -*5, G4, -, -!tick.freq:vibn(0,2,3),
+    -*3, F#4, -, -!sr:40, -*3, G4, -, -!sr:40, -*3, G4, -, F#4, -, -!sr:40, -, E4, -, -!tick.freq:vibn(0,2,3),
+    -, D4, -, -!sr:40, -, E4, -, -!tick.freq:vibn(0,2,3), -, G4, -, -!sr:40, -, A4, -, -!tick.freq:vibn(0,2,3),
+    -, B4, -*3]
+  p16: [C5.i5, -*3, -!tick.freq:vibn(0,2,3), -*7, C#5, -, -!sr:40, -, D5, -, -!tick.freq:vibn(0,2,3),
+    -*3, B4, -, -!sr:40, -*3, A4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3), -*15, B4, -, -!tick.freq:vibn(0,2,3),
+    -, A4, -, -!sr:40, -, G4, -, -!tick.freq:vibn(0,2,3), -, A4, -, -!sr:40, -]
+  p17: [B4.i5, -, -!tick.freq:vibn(0,2,3), -, A4, -, off, -, B4!sr:88, -, -!tick.freq:vibn(0,2,3), -,
+    A4!sr:88, -, off, -, B4!sr:56, -, -!tick.freq:vibn(0,2,3), -, A4!sr:56, -, off, -, B4!sr:24, -, -!tick.freq:vibn(0,2,3),
+    -, A4!sr:24, -, off, -, C3.i2, -, C3, -, C3, -*3, C3, -*3, C3, -, C3, -*3, C3, -*3, C3, -, C3, -,
+    C3, -, C3, -, C3, -]
+  p18: [D4.i6, -, E4, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, A4, -, D4, -, E4, -, G4, -, C3.i2,
+    -, E4.i6, -, G4, -, E4, -, D4, -, E4, -, G4, -, E4, -, C3.i2, -, E4.i6, -, G4, -, E4, -, A4, -, E4,
+    -, A4, -, B4, -, C3.i2, -, A4.i6, -, G4, -, C3.i2, -]
+  p19: [D4.i6, -, E4, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, A4, -, D4, -, E4, -, G4, -, C3.i2,
+    -, E4.i6, -, G4, -, E4, -, D4, -, E4, -, G4, -, E4, -, C3.i2, -, E4.i6, -, G4, -, E4, -, A4, -, E4,
+    -, A4, -, B4, -, C3.i2, -, C3, -, C3, -, C3, -]
+  p20: [C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, C3.i2, -, D4.i6, -, E4, -,
+    G4, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2, -, E4.i6,
+    -, G4, -, E4, -, C3.i2, -, C3, -, A4.i6, -, C3.i2, -, C3, -, A4.i6, -, G4, -, C3.i2, -]
+  p21: [C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, C3.i2, -, D4.i6, -, E4, -,
+    G4, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, C3.i2, -, C3, -*3, C3, -*3, C3, -, C3, -, C3, -, B3.i10,
+    -, B3, -*3, G3, -*3, G3, -, D#3, -, D#3, -]
+  p22: [B5.i11!tick.freq:porta(-1,144), -*11, B5!tick.freq:porta(-1,144), -*7, B5!tick.freq:porta(-1,144),
+    -*5, B5!tick.freq:porta(-1,144), -*5, B5!tick.freq:porta(-1,144), -*23, B5!tick.freq:porta(-1,144),
+    -*7]
+  p23: [-*12, B5.i11!tick.freq:porta(-1,144), -*7, B5!tick.freq:porta(-1,144), -*5, B5!tick.freq:porta(-1,144),
+    -*5, B5!tick.freq:porta(-1,144), -*31]
+  p24: [C3.i10, -, C3, -*3, G2!sr:169, -, G2!sr:169, -*3, D2!sr:137, -, D2!sr:137, -*3, C2!sr:89, -, C2!sr:89,
+    -*43]
+  p25: [-*55, C3.i2, -*8]
+  p26: [-*58, C3.i2, -, C3, -, C3, -]
+  p27: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
+    -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
+    -, F#4.i7, -, -!sr:71, -*3, E4, -*5, -!run:c19, -!tick.freq:porta(-1,160), -*2]
+  p28: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
+    -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
+    -, F#4.i7, -*3, G4.i8, -, -!sr:71, -, F#4.i7, -*3, D4.i8, -, -!sr:71, -]
+  p29: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
+    -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
+    -, F#4.i7, -, -!sr:71, -*3, E4, -*5, F#4, -, -!sr:71, -]
+  p30: [F#4.i7, -*3, G4.i8, -, -!sr:71, -, F#4.i7!sr:151, -*3, G4.i8!sr:151, -, -!sr:55, -, F#4.i7!sr:87,
+    -*3, G4.i8!sr:87, -, -!sr:39, -, F#4.i7, -*3, E4, -, -!sr:71, -, E4, -*5, D4.i8, -, -!sr:71, -*3,
+    B3.i9, -, -!sr:71, -, D4.i8, -*3, B3.i9, -, -!sr:71, -, A3, -*3, B3, -, -!sr:71, -]
+  p31: [C1.i12!tick.freq:porta(1,152), -*63]
+  p32: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3), -*5, A4,
+    -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, C#5, D5!tick.freq:snap()!legato,
+    -!sr:40, -!tick.freq:none, -*4, B4, -, -!sr:40, -*5, A4, -, -!sr:40, -*5, G4, -, -!sr:40, -, A4, -,
+    -!tick.freq:vibn(0,2,3), -, G4, -, -!sr:40, -]
+  p33: [B4.i5, -*3, -!tick.freq:vibn(0,2,3), -*3, A4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3), -*3, G4,
+    -, -!tick.freq:vibn(0,2,3), -*3, F#4, -, -!sr:40, -*3, E4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3),
+    -*9, D4, -, E4, -, D4, -, G4, -, F#4, -, G4, -, F#4, -, A4, -, G4, -, A4, -, G4, -]
+  p34: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3), -*5, A4,
+    -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, E5, -, -!sr:40, -*5, D5,
+    -, -!sr:40, -*5, B4, -, -!sr:40, -*5, A4, -, -!sr:40, -*5, G4, -, -!sr:40, -]
+  p35: [F#4.i7!tempo:3, -*3, G4.i8, -, -!sr:71, -, F#4.i7!sr:151, -*3, G4.i8!sr:151, -, -!sr:55, -, F#4.i7!sr:87,
+    -*3, G4.i8!sr:87, -, -!sr:39, -, F#4.i7, -*3, E4, -, -!sr:71, -, E4!tempo:3/4, -*5, D4.i8, -, -!tempo:4,
+    -!sr:71, -*2, B3.i9, -, -!sr:71, -, D4.i8, -*3, B3.i9, -, -!sr:71, -, A3, -*3, F#3, -, -!sr:71, -]
+  p36: [B3.i9!sr:203, -*7, off, -*55]
 init: [-.i1!vol:15!tempo:2, -.i1, -.i1]
 song:
-  - def:
-      phrase:
-        p0: [-, -!tempo:6]
-        p1: [C3.i1!tempo:3, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4,
-          off, C3.i1, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1,
-          -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -, G2.i3,
-          -, E4.i4, off, G2.i3, -, C3.i1, -, E4.i4, off, D2.i3, -, E4.i4, off]
-        p2: [C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -, E4.i4!run:c5,
-          off, C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -,
-          E4.i4!run:c5, off, C3.i1, -, B1.i3, -, F#4.i4!run:c6, off, B1.i3, -, C3.i1, -, F#4.i4!run:c6,
-          off, B2.i3, -, F#4.i4!run:c6, off, C3.i1, -, B1.i3, -, F#4.i4!run:c7, off, B1.i3, -, C3.i1,
-          -, F#4.i4!run:c7, off, D2.i3, -, F#4.i4!run:c7, off]
-        p3: [C3.i1, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1,
-          -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -, E2.i3,
-          -, D4.i4!run:c8, off, E2.i3, -, C3.i1, -, D4.i4!run:c8, off, E3.i3, -, D4.i4!run:c8, off, C3.i1,
-          -, G2.i3, -, D4.i4!run:c8, off, G2.i3, -, C3.i1, -, D4.i4!run:c8, off, D2.i3, -, E4.i4, off]
-        p4: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
-          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, C2.i3,
-          -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3, -, E4.i4,
-          off, D2.i3, -, C3.i1, -, E4.i4, off, D#2.i3, -, E4.i4, off]
-        p5: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
-          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, C2.i3,
-          -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, B1.i3, -, E4.i4,
-          off, B1.i3, -, C3.i1, -, E4.i4, off, B2.i3, -, E4.i4, off]
-        p6: [C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -, E4.i4!run:c5,
-          off, C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -,
-          E4.i4!run:c5, off, C3.i1, -, B1.i3, -, D4.i4!run:c9, off, B1.i3, -, C3.i1, -, D4.i4!run:c9,
-          off, B2.i3, -, D4.i4!run:c9, off, C3.i1, -, B1.i3, -, D4.i4!run:c9, off, B1.i3, -, C3.i1, -,
-          D4.i4!run:c9, off, D2.i3, -, D4.i4!run:c9, off]
-        p7: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
-          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3,
-          -, D4.i4!run:c9, off, D2.i3, -, C3.i1, -, D4.i4!run:c9, off, D3.i3, -, D4.i4!run:c9, off, C3.i1,
-          -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off]
-        p8: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
-          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3,
-          -, D4.i4!run:c9, off, D2.i3, -, C3.i1, -, D4.i4!run:c9, off, D3.i3, -, D4.i4!run:c9, off, C3.i1,
-          -, G2.i3, -, D4.i4!run:c10, off, G2.i3, -, C3.i1, -, D4.i4!run:c10, off, D2.i3, -, D4.i4!run:c10,
-          off]
-        p9: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
-          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3,
-          -, off, -, D2, -, off, -*3, D3, -, off, -, C3.i1, -, B1.i3, -, off, -, B1, -, off, -*3, B2,
-          -, off, -]
-        p10: [C3.i1!tempo:3, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4,
-          off, C3.i1, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1,
-          -*7, C3, -*7, C3, -*7, C3, -*7]
-        p11: [E1.i3!sr:236, -*7, off!tick.freq:vib(0,4,16), -*55]
-        p12: [-!tick.freq:none, -*3]
-        p13: [-*64]
-        p14: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3),
-          -*5, A4, -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, A4, -, -!sr:40,
-          -, -!tick.freq:vibn(0,2,3), -*23, A4, -*3, A#4, -, -!sr:40, -]
-        p15: [B4.i5, -*3, -!tick.freq:vibn(0,2,3), -*3, A4, -, -!sr:40, -*5, G4, -, -!tick.freq:vibn(0,2,3),
-          -*3, F#4, -, -!sr:40, -*3, G4, -, -!sr:40, -*3, G4, -, F#4, -, -!sr:40, -, E4, -, -!tick.freq:vibn(0,2,3),
-          -, D4, -, -!sr:40, -, E4, -, -!tick.freq:vibn(0,2,3), -, G4, -, -!sr:40, -, A4, -, -!tick.freq:vibn(0,2,3),
-          -, B4, -*3]
-        p16: [C5.i5, -*3, -!tick.freq:vibn(0,2,3), -*7, C#5, -, -!sr:40, -, D5, -, -!tick.freq:vibn(0,2,3),
-          -*3, B4, -, -!sr:40, -*3, A4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3), -*15, B4, -, -!tick.freq:vibn(0,2,3),
-          -, A4, -, -!sr:40, -, G4, -, -!tick.freq:vibn(0,2,3), -, A4, -, -!sr:40, -]
-        p17: [B4.i5, -, -!tick.freq:vibn(0,2,3), -, A4, -, off, -, B4!sr:88, -, -!tick.freq:vibn(0,2,3),
-          -, A4!sr:88, -, off, -, B4!sr:56, -, -!tick.freq:vibn(0,2,3), -, A4!sr:56, -, off, -, B4!sr:24,
-          -, -!tick.freq:vibn(0,2,3), -, A4!sr:24, -, off, -, C3.i2, -, C3, -, C3, -*3, C3, -*3, C3, -,
-          C3, -*3, C3, -*3, C3, -, C3, -, C3, -, C3, -, C3, -]
-        p18: [D4.i6, -, E4, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, A4, -, D4, -, E4, -, G4,
-          -, C3.i2, -, E4.i6, -, G4, -, E4, -, D4, -, E4, -, G4, -, E4, -, C3.i2, -, E4.i6, -, G4, -,
-          E4, -, A4, -, E4, -, A4, -, B4, -, C3.i2, -, A4.i6, -, G4, -, C3.i2, -]
-        p19: [D4.i6, -, E4, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, A4, -, D4, -, E4, -, G4,
-          -, C3.i2, -, E4.i6, -, G4, -, E4, -, D4, -, E4, -, G4, -, E4, -, C3.i2, -, E4.i6, -, G4, -,
-          E4, -, A4, -, E4, -, A4, -, B4, -, C3.i2, -, C3, -, C3, -, C3, -]
-        p20: [C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, C3.i2, -, D4.i6, -,
-          E4, -, G4, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2,
-          -, E4.i6, -, G4, -, E4, -, C3.i2, -, C3, -, A4.i6, -, C3.i2, -, C3, -, A4.i6, -, G4, -, C3.i2,
-          -]
-        p21: [C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, C3.i2, -, D4.i6, -,
-          E4, -, G4, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, C3.i2, -, C3, -*3, C3, -*3, C3, -, C3,
-          -, C3, -, B3.i10, -, B3, -*3, G3, -*3, G3, -, D#3, -, D#3, -]
-        p22: [B5.i11!tick.freq:porta(-1,144), -*11, B5!tick.freq:porta(-1,144), -*7, B5!tick.freq:porta(-1,144),
-          -*5, B5!tick.freq:porta(-1,144), -*5, B5!tick.freq:porta(-1,144), -*23, B5!tick.freq:porta(-1,144),
-          -*7]
-        p23: [-*12, B5.i11!tick.freq:porta(-1,144), -*7, B5!tick.freq:porta(-1,144), -*5, B5!tick.freq:porta(-1,144),
-          -*5, B5!tick.freq:porta(-1,144), -*31]
-        p24: [C3.i10, -, C3, -*3, G2!sr:169, -, G2!sr:169, -*3, D2!sr:137, -, D2!sr:137, -*3, C2!sr:89,
-          -, C2!sr:89, -*43]
-        p25: [-*55, C3.i2, -*8]
-        p26: [-*58, C3.i2, -, C3, -, C3, -]
-        p27: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
-          -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
-          -, F#4.i7, -, -!sr:71, -*3, E4, -*5, -!run:c19, -!tick.freq:porta(-1,160), -*2]
-        p28: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
-          -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
-          -, F#4.i7, -*3, G4.i8, -, -!sr:71, -, F#4.i7, -*3, D4.i8, -, -!sr:71, -]
-        p29: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
-          -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
-          -, F#4.i7, -, -!sr:71, -*3, E4, -*5, F#4, -, -!sr:71, -]
-        p30: [F#4.i7, -*3, G4.i8, -, -!sr:71, -, F#4.i7!sr:151, -*3, G4.i8!sr:151, -, -!sr:55, -, F#4.i7!sr:87,
-          -*3, G4.i8!sr:87, -, -!sr:39, -, F#4.i7, -*3, E4, -, -!sr:71, -, E4, -*5, D4.i8, -, -!sr:71,
-          -*3, B3.i9, -, -!sr:71, -, D4.i8, -*3, B3.i9, -, -!sr:71, -, A3, -*3, B3, -, -!sr:71, -]
-        p31: [C1.i12!tick.freq:porta(1,152), -*63]
-        p32: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3),
-          -*5, A4, -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, C#5, D5!tick.freq:snap()!legato,
-          -!sr:40, -!tick.freq:none, -*4, B4, -, -!sr:40, -*5, A4, -, -!sr:40, -*5, G4, -, -!sr:40, -,
-          A4, -, -!tick.freq:vibn(0,2,3), -, G4, -, -!sr:40, -]
-        p33: [B4.i5, -*3, -!tick.freq:vibn(0,2,3), -*3, A4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3), -*3,
-          G4, -, -!tick.freq:vibn(0,2,3), -*3, F#4, -, -!sr:40, -*3, E4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3),
-          -*9, D4, -, E4, -, D4, -, G4, -, F#4, -, G4, -, F#4, -, A4, -, G4, -, A4, -, G4, -]
-        p34: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3),
-          -*5, A4, -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, E5, -, -!sr:40,
-          -*5, D5, -, -!sr:40, -*5, B4, -, -!sr:40, -*5, A4, -, -!sr:40, -*5, G4, -, -!sr:40, -]
-        p35: [F#4.i7!tempo:3, -*3, G4.i8, -, -!sr:71, -, F#4.i7!sr:151, -*3, G4.i8!sr:151, -, -!sr:55,
-          -, F#4.i7!sr:87, -*3, G4.i8!sr:87, -, -!sr:39, -, F#4.i7, -*3, E4, -, -!sr:71, -, E4!tempo:3/4,
-          -*5, D4.i8, -, -!tempo:4, -!sr:71, -*2, B3.i9, -, -!sr:71, -, D4.i8, -*3, B3.i9, -, -!sr:71,
-          -, A3, -*3, F#3, -, -!sr:71, -]
-        p36: [B3.i9!sr:203, -*7, off, -*55]
-    play: [p0, p0, p0]
+  - play: [p0, p0, p0]
   - play: [p1, p13, p13]
   - play: [p1, p13, p13]
   - play: [p1, p13, p13]

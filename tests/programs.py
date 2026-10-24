@@ -14,10 +14,10 @@ from unitracker_grammar.document import printed, read
 from unitracker_grammar import expr as E
 
 NAMED = {"RESTART": "restart", "CTRL": "ctrl", "PW": "pw", "FILTER": "filter"}
-SIGNED = {"PROGRAM_SIG"}
+SIGNED = {"SIGNATURE"}
 SECTIONS = {f"def_{k}": k for k in ("restart", "ins", "ctrl", "pw", "filter")}
 PREFIX = {"restart": "r", "ctrl": "c", "pw": "pw", "filter": "f"}
-INTEGER = {f"row_{k}" for k in "wait hold gate ad sr res mode vol".split()}
+INTEGER = {f"row_{k}" for k in "wait hold ctrl mask gate ad sr res route mode vol".split()}
 CELLS = ("cell_value", "modulation")
 
 
@@ -51,11 +51,7 @@ def _sites(node: Tree, out: list, inline: bool = False) -> list:
                 what = "name"
             elif child.type == "REL_PARAM" or child.type == "SIGNED" and node.data == "note_value":
                 what = "note"
-            elif child.type == "INT" and (
-                node.data in INTEGER | {"ctrl_value"}
-                or node.data == "route_value"
-                and len(node.children) == 1
-            ):
+            elif child.type == "INT" and node.data in INTEGER:
                 what = "int"
             elif child.type == "CALL":
                 what = "call"
@@ -139,6 +135,11 @@ class _Expander:
         return re.sub(r"(?m)^( *)(?:restart|ctrl|pw|filter):\n(?!\1  )", "", text)
 
 
+def signed(text: str) -> int:
+    """The number of program templates of ``text``."""
+    return sum(1 for _ in _records(parser().parse(text), SIGNED))
+
+
 def expanded(text: str) -> str:
     """``text`` with each call of a program template a named program's name (see the module)."""
     return printed(read(_Expander(text).document()))
@@ -164,7 +165,7 @@ def _placed(text: str, tree: Tree, lines: dict) -> list:
     """The edits adding each kind's ``lines`` to its top-level section, or a new one where the
     kinds' order puts it."""
     top = {SECTIONS[s.data]: s for s in tree.children if isinstance(s, Tree) and s.data in SECTIONS}
-    end = re.search(r"(?m)^(?:init: |song:\n)", text).start()
+    end = re.search(r"(?m)^(?:phrase:\n|init: |song:\n)", text).start()
     edits = []
     for k, kind in enumerate(TOP):
         if kind in top and kind in lines:

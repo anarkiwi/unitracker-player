@@ -69,7 +69,7 @@ def test_every_legal_op_assembles_to_the_opcode_jennings_disassembles(mnemonic, 
 
 
 def test_the_entry_symbols_are_the_firing_s_values():
-    """v in, phi φ's low 16 bits, nn and ne the notes' low bytes; v unwritten passes."""
+    """v in, phi phi's low 16 bits, nn and ne the notes' low bytes; v unwritten passes."""
     phi = "lda phi\nsta v\nlda phi+1\nsta v+1\nrts"
     assert fire(phi, phi=0x12345) == 0x2345
     assert fire("lda nn\nsta v\nlda ne\nsta v+1\nrts", note=-1, event=0x1C3) == 0xC3FF

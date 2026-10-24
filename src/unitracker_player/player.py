@@ -43,7 +43,7 @@ __all__ = [
 
 class _Voice:  # pylint: disable=too-many-instance-attributes
     """A voice's cells, note state, modulators and program slots; ``freq_mods`` and
-    ``pw_mods`` hold its cells' modulator slots, each modulator ``[fn, φ, voice, slot.cell, by
+    ``pw_mods`` hold its cells' modulator slots, each modulator ``[fn, phi, voice, slot.cell, by
     command]``."""
 
     def __init__(self, widths: dict, state: dict):
@@ -253,7 +253,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
 
     # pylint: disable-next=too-many-arguments,too-many-positional-arguments
     def _set(self, v: int, cell: str, slot: int, fn, command: bool, fresh=False):
-        """Binds ``slot`` of ``cell`` to modulator ``fn`` by a command or a row, at φ 0 but
+        """Binds ``slot`` of ``cell`` to modulator ``fn`` by a command or a row, at phi 0 but
         where it is bound to ``fn`` already and the binding is no ``fresh`` one of a note's
         instrument."""
         mods = self._mods(v, cell)
@@ -269,7 +269,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
         self._end(v, "cut", range(len(self.cut_mods)), False)
 
     def _stop(self, v: int, cell: str, value, ends: tuple):
-        """Cell ``cell``'s ``reset``: φ of the modulators in slots ``ends`` back at 0; ``none`` or
+        """Cell ``cell``'s ``reset``: phi of the modulators in slots ``ends`` back at 0; ``none`` or
         ``hold``: ends them (the cutoff's only where voice ``v`` set them); ``hold`` also stops
         the cell's program slot and holds the frequency."""
         voice = self.voices[v]
@@ -319,7 +319,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
     # pylint: disable-next=too-many-branches,too-many-arguments,too-many-positional-arguments
     def _apply(self, v: int, ops: tuple, t: int, first: bool, fresh=False):
         """A row's keys, in vocabulary order; ``first`` marks a restart's first-tick row,
-        ``fresh`` an instrument field's program, whose bindings restart φ."""
+        ``fresh`` an instrument field's program, whose bindings restart phi."""
         voice = self.voices[v]
         for key, value in ops:
             if key == "ctrl":
@@ -429,7 +429,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
     def _chain(self, t: int, mods: list, value: int, mask: int, cell: str) -> int | None:
         """The cell's value ``value`` after its modulators ``mods`` fire, or None where it has
         none. Each slot in order fires on the value the slot before it left, unless it holds on
-        the events of the voice that set it, its φ first back at 0 on its reset events. A code
+        the events of the voice that set it, its phi first back at 0 on its reset events. A code
         modulator runs on the state of ``cell`` of the voice that set it (the one ``cut``
         state)."""
         if not any(mods):
