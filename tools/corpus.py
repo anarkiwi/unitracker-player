@@ -2,12 +2,16 @@
 
 As a pytest plugin (``-p corpus``, ``tools`` on the path) it writes every text a suite parses to
 ``$UNITRACKER_CORPUS``; as a command it plays a directory's documents (``frames``), compares two
-such runs (``diff``) and lists the documents that are not their canonical text (``canon``).
+such runs (``diff``), lists the documents that are not their canonical text (``canon``), and
+carries documents across a change of the format's text: ``models`` pickles a directory's
+document models under the grammar installed, ``reprint`` prints them under another into a
+directory, listing those whose text does not read back to their model.
 """
 
 import argparse
 import hashlib
 import os
+import pickle
 import sys
 from pathlib import Path
 
@@ -28,7 +32,7 @@ def pytest_configure(config):  # pylint: disable=unused-argument
 def _recording(parse, out: Path):
 
     def recorded(text, *args, **kwargs):
-        if isinstance(text, str) and text.startswith("unitracker: "):
+        if isinstance(text, str) and text.startswith("unitracker:"):
             name = hashlib.sha1(text.encode()).hexdigest()[:16]
             (out / f"{name}.yaml").write_text(text, encoding="utf-8")
         return parse(text, *args, **kwargs)
@@ -83,6 +87,42 @@ def canon(directory: Path) -> list[str]:
     return out
 
 
+def models(directory: Path, out: Path) -> list[str]:
+    """Pickles ``{name: model}`` of the documents of ``directory`` the grammar reads into
+    ``out``; the names of those it refuses."""
+    from unitracker_grammar.document import read  # pylint: disable=import-outside-toplevel
+
+    found, refused = {}, []
+    for path in tqdm(sorted(directory.glob("*.yaml")), unit="doc"):
+        try:
+            found[path.stem] = read(path.read_text(encoding="utf-8"))
+        except ValueError:
+            refused.append(path.stem)
+    out.write_bytes(pickle.dumps(found))
+    return refused
+
+
+def reprint(pickled: Path, directory: Path) -> list[str]:
+    """Writes each model of ``pickled`` (:func:`models`) as its canonical text into
+    ``directory``; the names of those whose text does not read back to the model and print as
+    itself."""
+    from unitracker_grammar.document import printed, read  # pylint: disable=import-outside-toplevel
+
+    directory.mkdir(parents=True, exist_ok=True)
+    out = []
+    for name, model in tqdm(pickle.loads(pickled.read_bytes()).items(), unit="doc"):
+        text = printed(model)
+        (directory / f"{name}.yaml").write_text(text, encoding="utf-8")
+        try:
+            again = read(text)
+        except ValueError as exc:
+            out.append(f"{name}: {exc}")
+            continue
+        if again != model or printed(again) != text:
+            out.append(name)
+    return out
+
+
 def main(argv=None) -> int:
     """The command line."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
@@ -97,11 +137,23 @@ def main(argv=None) -> int:
     cmd.add_argument("b", type=Path)
     cmd = sub.add_parser("canon")
     cmd.add_argument("directory", type=Path)
+    cmd = sub.add_parser("models")
+    cmd.add_argument("directory", type=Path)
+    cmd.add_argument("out", type=Path)
+    cmd = sub.add_parser("reprint")
+    cmd.add_argument("pickled", type=Path)
+    cmd.add_argument("directory", type=Path)
     args = parser.parse_args(argv)
     if args.command == "frames":
         frames(args.directory, args.out, args.ticks, args.first_use)
         return 0
-    names = diff(args.a, args.b) if args.command == "diff" else canon(args.directory)
+    commands = {
+        "diff": lambda: diff(args.a, args.b),
+        "canon": lambda: canon(args.directory),
+        "models": lambda: models(args.directory, args.out),
+        "reprint": lambda: reprint(args.pickled, args.directory),
+    }
+    names = commands[args.command]()
     print("\n".join(names))
     return 1 if names else 0
 

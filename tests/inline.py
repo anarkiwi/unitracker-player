@@ -81,7 +81,7 @@ class _Inliner:
         if node.data == "program":
             return KIND[token.type] + self.expand(*_span(node), (*stack, str(token)))
         binding = self.body(str(token), stack)
-        return f"{KIND[token.type]}[{{{CELL[token.type]}: {binding}}}, end]"
+        return f"{KIND[token.type]}[{{{CELL[token.type]}:{binding}}},end]"
 
     def call(self, value: C.Call) -> str:
         """An anonymous body with each parameter's immediate its byte, or the quoted expression
@@ -112,7 +112,7 @@ class _Inliner:
         ]
         for row in self.tree.find_data("row"):
             if row.children[0].data == "def_phrase":
-                out.append((row.meta.start_pos, _span(row.children[-1])[0], "  - play: "))
+                out.append((row.meta.start_pos, _span(row.children[-1])[0], " - play:"))
         return out
 
 

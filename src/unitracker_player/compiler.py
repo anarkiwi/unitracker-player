@@ -378,8 +378,8 @@ class _Compiler:
             event.keep_filter,
             event.steps,
             "legato" in cmds,
-            _tempo(cmds["tempo"], "!tempo") if "tempo" in cmds else None,
-            _tempo(cmds["vtempo"], "!vtempo") if "vtempo" in cmds else None,
+            _tempo(cmds["tempo"], "tempo") if "tempo" in cmds else None,
+            _tempo(cmds["vtempo"], "vtempo") if "vtempo" in cmds else None,
         )
 
     def phrase(self, name: str) -> tuple:

@@ -7,8 +7,8 @@ from song import doc
 from unitracker_player import play, read
 from unitracker_player.render import RenderError, render
 
-PW = "[{ctrl: 65, note: +0, pw: '16*abs(phi % 40 - 20) + 512'}, end]"
-VIB = "[{ctrl: 65, note: +0, freq: 'F(N) + 8*(phi % 6 < 3) - 4'}, end]"
+PW = "[{ctrl:65,note:+0,pw:'16*abs(phi % 40 - 20) + 512'},end]"
+VIB = "[{ctrl:65,note:+0,freq:'F(N) + 8*(phi % 6 < 3) - 4'},end]"
 
 
 def test_an_ending_song_renders_to_its_end():
@@ -18,9 +18,9 @@ def test_an_ending_song_renders_to_its_end():
 
 
 @pytest.mark.parametrize("ctrl", [PW, VIB])
-@pytest.mark.parametrize("phrase", ["[C4.i1, -*3]", "[C4.i1*7]", "[C4.i1, D4*2, -*2]"])
+@pytest.mark.parametrize("phrase", ["[C4.i1,-*3]", "[C4.i1*7]", "[C4.i1,D*2,-*2]"])
 def test_a_looping_song_repeats_from_its_loop(ctrl, phrase):
-    text = doc(phrase=phrase, ins=f"{{ad: 9, sr: 240, ctrl: {ctrl}}}", ending=0)
+    text = doc(phrase=phrase, ins=f"{{ad:9,sr:240,ctrl:{ctrl}}}", ending=0)
     r = render(read(text))
     assert r.loop is not None
     period = len(r.frames) - r.loop
@@ -31,7 +31,7 @@ def test_a_looping_song_repeats_from_its_loop(ctrl, phrase):
 
 
 def test_a_modulator_whose_phase_never_recurs_is_refused():
-    text = doc(phrase="[-]", ins="{ad: 9}", head="init: [-!pw:'phi']\n", ending=0)
+    text = doc(phrase="[-]", ins="{ad:9}", head="init:[- pw:'phi']\n", ending=0)
     with pytest.raises(RenderError):
         render(read(text))
 
