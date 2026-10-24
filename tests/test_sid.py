@@ -13,22 +13,22 @@ from unitracker_player.render import render
 
 PAL_FRAME = 19656
 FIXTURE_TICKS = 1000
-ARP = "[{ctrl: 65, note: +0, pw: '16*abs(phi % 40 - 20) + 512'}, {wait: 1, note: +4}, {loop: 1}]"
-FILT = "[{cut: 'v + 9', res: 15, route: 7, mode: 16, vol: 15}, end]"
+ARP = "[{ctrl:65,note:+0,pw:'16*abs(phi % 40 - 20) + 512'},{wait:1,note:+4},{loop:1}]"
+FILT = "[{cut:'v + 9',res:15,route:7,mode:16,vol:15},end]"
 SONGS = {
     "ending": doc(),
-    "looping": doc(phrase="[C4.i1, E4*2, -*2]", ins=f"{{ad: 9, sr: 240, ctrl: {ARP}}}", ending=0),
+    "looping": doc(phrase="[C4.i1,E*2,-*2]", ins=f"{{ad:9,sr:240,ctrl:{ARP}}}", ending=0),
     "restart": doc(
-        phrase="[C4.i1, D4, -*2]",
-        ins="{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], restart: r1}",
-        restart={"r1": "[{hold: 2, gate: 0, ad: 15, sr: 0}, {}, end]"},
+        phrase="[C4.i1,D,-*2]",
+        ins="{ad:9,sr:240,ctrl:[{ctrl:65,note:+0},end],restart:r1}",
+        restart={"r1": "[{hold:2,gate:0,ad:15,sr:0},{},end]"},
         ending=0,
     ),
-    "filter": doc(phrase="[C4.i1*9]", ins=f"{{ad: 9, ctrl: {ARP}, filter: {FILT}}}"),
+    "filter": doc(phrase="[C4.i1*9]", ins=f"{{ad:9,ctrl:{ARP},filter:{FILT}}}"),
     "voices": doc(
-        phrase={"p1": "[C4.i1, -*3]", "p2": "[G3.i1*2, A3*2]"},
-        rows=("[p1, p2]", "[p2, p1]"),
-        head="voices: 2\n",
+        phrase={"p1": "[C4.i1,-*3]", "p2": "[G3.i1*2,A*2]"},
+        rows=("[p1,p2]", "[p2,p1]"),
+        head="voices:2\n",
         ending=1,
     ),
 }

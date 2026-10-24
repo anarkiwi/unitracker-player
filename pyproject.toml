@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unitracker-player"
-version = "0.20.0"
+version = "0.21.0"
 description = "Plays canonical unitracker documents to SID register state per tick, and builds them into standalone .sid files"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "Josh Bailey" }]
 classifiers = ["Operating System :: POSIX :: Linux", "Programming Language :: Python :: 3"]
 dependencies = [
-  "unitracker-grammar>=0.13.0",
+  "unitracker-grammar>=0.14.0",
   "jennings>=0.2",
   "lark>=1.2",
   "numpy>=1.26",

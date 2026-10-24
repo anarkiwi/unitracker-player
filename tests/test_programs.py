@@ -14,27 +14,21 @@ from unitracker_player.document import Param
 
 PROGS = doc(
     {
-        "p1": "[C4.i1!run:arp(3,4), -, D4.i2, -!run:arp(0,7), E4.i1!run:pt(9), -*3]",
-        "p2": "[G3.i2, -!run:fl(200), A3.i1!run:pa(3)*2, -!run:fl(7), -!run:pa(3), -*2]",
+        "p1": "[C4.i1 run:arp(3,4),-,D.i2,- run:arp(0,7),E.i1 run:pt(9),-*3]",
+        "p2": "[G3.i2,- run:fl(200),A.i1 run:pa(3)*2,- run:fl(7),- run:pa(3),-*2]",
     },
     {
-        "i1": "{ad: 9, sr: 240, ctrl: arp(7,4), pw: pt(300), filter: fl(500),"
-        " restart: hr(1,15,0)}",
-        "i2": "{ad: 5, ctrl: [{ctrl: 65, note: +0}, {wait: 2, run: arp(12,0)}, end], pw: pw1,"
-        " restart: hr(2,0,240)}",
+        "i1": "{ad:9,sr:240,ctrl:arp(7,4),pw:pt(300),filter:fl(500)," "restart:hr(1,15,0)}",
+        "i2": "{ad:5,ctrl:[{ctrl:65,note:+0},{wait:2,run:arp(12,0)},end],pw:pw1,"
+        "restart:hr(2,0,240)}",
     },
-    rows=("[p1, p2]", "[p2, p1]"),
-    head="voices: 2\ntempo: 2\n",
+    rows=("[p1,p2]", "[p2,p1]"),
+    head="voices:2\ntempo:2\n",
     mods={"walk(s)": "v + s"},
-    restart={"hr(h, ad, sr)": "[{hold: h, gate: 0, ad: ad, sr: sr}, {}, end]"},
-    ctrl={
-        "arp(a, b)": "[{ctrl: 65, note: +a}, {wait: 1, note: -b},"
-        " {wait: a, ctrl: 64, note: +0}, {loop: 0}]"
-    },
-    pw={"pt(b)": "[{pw: b}, {wait: 1, pw: walk(b)}, end]", "pw1": "pt(40)", "pa(b)": "walk(b)"},
-    filter={
-        "fl(c)": "[{cut: c, res: 9, route: 1, mode: 16, vol: 15}, {wait: 3, cut: walk(c)}, end]"
-    },
+    restart={"hr(h,ad,sr)": "[{hold:h,gate:0,ad:ad,sr:sr},{},end]"},
+    ctrl={"arp(a,b)": "[{ctrl:65,note:+a},{wait:1,note:-b}," "{wait:a,ctrl:64,note:+0},{loop:0}]"},
+    pw={"pt(b)": "[{pw:b},{wait:1,pw:walk(b)},end]", "pw1": "pt(40)", "pa(b)": "walk(b)"},
+    filter={"fl(c)": "[{cut:c,res:9,route:1,mode:16,vol:15},{wait:3,cut:walk(c)},end]"},
 )
 
 
@@ -85,8 +79,8 @@ def test_a_call_is_compiled_once_and_is_its_program_s_identity():
 
 def test_a_binding_a_template_makes_keeps_phi_for_the_same_arguments():
     text = doc(
-        "[C4.i1!run:pq(100), -!run:pq(100), -!run:pq(200), -]",
-        head="tempo: 2\n",
+        "[C4.i1 run:pq(100),- run:pq(100),- run:pq(200),-]",
+        head="tempo:2\n",
         mods={"ph(s)": "s + phi"},
         pw={"pq(b)": "ph(b)"},
     )
@@ -95,8 +89,8 @@ def test_a_binding_a_template_makes_keeps_phi_for_the_same_arguments():
 
 def test_an_argument_wider_than_its_field_keeps_its_low_bits():
     def ad(arg: int) -> list:
-        ctrl = {"ca(a)": "[{ctrl: 65, ad: a}, end]"}
-        return reg(play(doc("[C4.i1, -]", f"{{ctrl: ca({arg})}}", ctrl=ctrl)), 5)
+        ctrl = {"ca(a)": "[{ctrl:65,ad:a},end]"}
+        return reg(play(doc("[C4.i1,-]", f"{{ctrl:ca({arg})}}", ctrl=ctrl)), 5)
 
     assert ad(-1) == ad(255) and ad(300) == ad(44) and ad(44)[-1] == 44
 
@@ -104,17 +98,17 @@ def test_an_argument_wider_than_its_field_keeps_its_low_bits():
 @pytest.mark.parametrize(
     "edits, match",
     [
-        ([("ctrl: arp(7,4)", "ctrl: arp(7)")], r"arp\(7\): arp takes 2 integer argument"),
-        ([("ctrl: arp(7,4)", "ctrl: nope(7)")], "nope is no program template"),
-        ([("ctrl: arp(7,4)", "ctrl: pt(7)")], "pt is a pw program, not a ctrl program"),
-        ([("restart: hr(1,15,0)", "restart: arp(1,2)")], "arp is a ctrl program, not a restart"),
-        ([("!run:arp(0,7)", "!run:hr(0,7,1)")], "hr is no ctrl, pw or filter program template"),
-        ([("!run:arp(0,7)", "!run:walk(1)")], "walk is no ctrl, pw or filter program template"),
+        ([("ctrl:arp(7,4)", "ctrl:arp(7)")], r"arp\(7\): arp takes 2 integer argument"),
+        ([("ctrl:arp(7,4)", "ctrl:nope(7)")], "nope is no program template"),
+        ([("ctrl:arp(7,4)", "ctrl:pt(7)")], "pt is a pw program, not a ctrl program"),
+        ([("restart:hr(1,15,0)", "restart:arp(1,2)")], "arp is a ctrl program, not a restart"),
+        ([(" run:arp(0,7)", " run:hr(0,7,1)")], "hr is no ctrl, pw or filter program template"),
+        ([(" run:arp(0,7)", " run:walk(1)")], "walk is no ctrl, pw or filter program template"),
         (
-            [("{pw: b}, {wait: 1,", "{pw: b}, {wait: b,"), ("!run:pt(9)", "!run:pt(-1)")],
+            [("{pw:b},{wait:1,", "{pw:b},{wait:b,"), (" run:pt(9)", " run:pt(-1)")],
             r"program pt\(-1\): -1 ticks",
         ),
-        ([("pw1: pt(40)", "pw1: pu(40)\n  pu(b): pu(b)")], "a program template calls itself"),
+        ([("pw1:pt(40)", "pw1:pu(40)\n pu(b):pu(b)")], "a program template calls itself"),
     ],
     ids=[
         "arity",
@@ -140,13 +134,13 @@ def test_calls_the_player_cannot_play_are_refused(edits, match):
     "text, match",
     [
         (
-            doc(ctrl={"c1": "[{ad: a}, end]"}, ins="{ctrl: c1}"),
+            doc(ctrl={"c1": "[{ad:a},end]"}, ins="{ctrl:c1}"),
             r"c1: reads \['a'\] and declares no",
         ),
-        (doc("[C4.i1!pw:walk(a)]", mods={"walk(s)": "v + s"}), r"\['a'\] read outside a template"),
+        (doc("[C4.i1 pw:walk(a)]", mods={"walk(s)": "v + s"}), r"\['a'\] read outside a template"),
         (
-            doc(ctrl={"arp(a, b)": "[{ctrl: a}, end]"}, ins="{ctrl: arp(65,1)}"),
-            r"arp\(a, b\): undeclared \[\], unread \['b'\]",
+            doc(ctrl={"arp(a,b)": "[{ctrl:a},end]"}, ins="{ctrl:arp(65,1)}"),
+            r"arp\(a,b\): undeclared \[\], unread \['b'\]",
         ),
     ],
     ids=["named-program", "command", "unread"],

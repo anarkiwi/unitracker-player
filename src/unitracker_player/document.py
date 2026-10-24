@@ -104,7 +104,7 @@ class Row:
 
 @dataclass(frozen=True)
 class Program:
-    """Rows in the order they run, then ``end`` (``loop`` None) or ``{loop: k}``; ``fresh``
+    """Rows in the order they run, then ``end`` (``loop`` None) or ``{loop:k}``; ``fresh``
     for an instrument's binding fields, whose bindings restart phi."""
 
     rows: tuple

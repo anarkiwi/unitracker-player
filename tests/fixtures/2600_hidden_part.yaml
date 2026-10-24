@@ -1,284 +1,243 @@
-unitracker: 2.1
-meta: {title: 2600 (hidden part), author: Niklas Broström (Klegg) & Qdor, released: 2020 FairLight}
-clock: {cycles_per_tick: 19656, clock_hz: 985000}
-tempo: 6
-slots: {freq: {wave: {reset: [row.note, row.freq]}, tick: {hold: [step-1, row]}}, pw: {pulse: {hold: [read, note-1, last-1]}}}
-order: [events, ctrl, pulse, filter, freq, pw, cut, read]
-state: {freq: {t: 1, m: 1}, pw: {r: 1, q: 1}}
+unitracker:2.2
+meta:{title:2600 (hidden part),author:Niklas Broström (Klegg) & Qdor,released:2020 FairLight}
+clock:{cycles_per_tick:19656,clock_hz:985000}
+tempo:6
+slots:{freq:{wave:{reset:[row.note,row.freq]},tick:{hold:[step-1,row]}},pw:{pulse:{hold:[read,note-1,last-1]}}}
+order:[events,ctrl,pulse,filter,freq,pw,cut,read]
+state:{freq:{t:1,m:1},pw:{r:1,q:1}}
 tables:
-  PL: [0, 136, 255, 135, 32, 32, 255, 134, 32, 32, 255, 135, 255]
-  PR: [0, 0, 0, 0, 38, 218, 4, 0, 38, 218, 8]
+ PL:[0,136,255,135,32,32,255,134,32,32,255,135,255]
+ PR:[0,0,0,0,38,218,4,0,38,218,8]
 mod:
-  ptab(b): |
-    lda phi
-    ora phi+1
-    bne go
-    sta q
-    lda #b
-    sta r
-    go:
-    ldx r
-    beq done
-    lda PL.lo,x
-    cmp #255
-    bne row
-    lda PR.lo,x
-    sta r
-    beq done
-    tax
-    row:
-    ldy q
-    bne mod
-    lda PL.lo,x
-    bpl time
-    sta v+1
-    lda PR.lo,x
-    sta v
-    inc r
-    done:
-    rts
-    time:
-    tay
-    mod:
-    dey
-    sty q
-    bne keep
-    inc r
-    keep:
-    ldy #0
-    lda PR.lo,x
-    bpl pos
-    dey
-    pos:
-    clc
-    adc v
-    sta v
-    tya
-    adc v+1
-    sta v+1
-    rts
-  note(): |
-    lda phi
-    ora phi+1
-    bne done
-    sta t
-    lda nn
-    and #127
-    sta m
-    tay
-    lda F.lo,y
-    sta v
-    lda F.hi,y
-    sta v+1
-    done:
-    rts
-  vib(l, c, s): |
-    lda phi+1
-    bne go
-    lda phi
-    cmp #l
-    bcs go
-    rts
-    go:
-    lda t
-    bmi up
-    cmp #c
-    beq up
-    bcc up
-    eor #255
-    up:
-    clc
-    adc #2
-    sta t
-    lsr
-    bcs dn
-    lda v
-    adc #s
-    sta v
-    lda v+1
-    adc #0
-    sta v+1
-    rts
-    dn:
-    lda v
-    sbc #s
-    sta v
-    lda v+1
-    sbc #0
-    sta v+1
-    rts
-  snap(): |
-    sta t
-    lda ne
-    sta m
-    and #127
-    tay
-    lda F.lo,y
-    sta v
-    lda F.hi,y
-    sta v+1
-    rts
-  porta(g, s): |
-    sta t
-    lda #g
-    bmi dn
-    clc
-    lda v
-    adc #<s
-    sta v
-    lda v+1
-    adc #>s
-    sta v+1
-    rts
-    dn:
-    sec
-    lda v
-    sbc #<s
-    sta v
-    lda v+1
-    sbc #>s
-    sta v+1
-    rts
-  tporta(s): |
-    lda ne
-    and #127
-    tay
-    sec
-    lda v
-    sbc F.lo,y
-    tax
-    lda v+1
-    sbc F.hi,y
-    bcc up
-    bne dn
-    txa
-    beq done
-    dn:
-    lda v
-    sbc #<s
-    sta v
-    lda v+1
-    sbc #>s
-    sta v+1
-    lda v
-    cmp F.lo,y
-    lda v+1
-    sbc F.hi,y
-    bcs done
-    snap:
-    lda F.lo,y
-    sta v
-    lda F.hi,y
-    sta v+1
-    lda ne
-    sta m
-    lda #0
-    sta t
-    done:
-    rts
-    up:
-    lda v
-    adc #<s
-    sta v
-    lda v+1
-    adc #>s
-    sta v+1
-    lda F.lo,y
-    cmp v
-    lda F.hi,y
-    sbc v+1
-    bcc snap
-    rts
+ ptab(b):|
+	lda phi
+	ora phi+1
+	bne go
+	sta q
+	lda #b
+	sta r
+	go:
+	ldx r
+	beq done
+	lda PL.lo,x
+	cmp #255
+	bne row
+	lda PR.lo,x
+	sta r
+	beq done
+	tax
+	row:
+	ldy q
+	bne mod
+	lda PL.lo,x
+	bpl time
+	sta v+1
+	lda PR.lo,x
+	sta v
+	inc r
+	done:
+	rts
+	time:
+	tay
+	mod:
+	dey
+	sty q
+	bne keep
+	inc r
+	keep:
+	ldy #0
+	lda PR.lo,x
+	bpl pos
+	dey
+	pos:
+	clc
+	adc v
+	sta v
+	tya
+	adc v+1
+	sta v+1
+	rts
+ note():|
+	lda phi
+	ora phi+1
+	bne done
+	sta t
+	lda nn
+	and #127
+	sta m
+	tay
+	lda F.lo,y
+	sta v
+	lda F.hi,y
+	sta v+1
+	done:
+	rts
+ vib(l,c,s):|
+	lda phi+1
+	bne go
+	lda phi
+	cmp #l
+	bcs go
+	rts
+	go:
+	lda t
+	bmi up
+	cmp #c
+	beq up
+	bcc up
+	eor #255
+	up:
+	clc
+	adc #2
+	sta t
+	lsr
+	bcs dn
+	lda v
+	adc #s
+	sta v
+	lda v+1
+	adc #0
+	sta v+1
+	rts
+	dn:
+	lda v
+	sbc #s
+	sta v
+	lda v+1
+	sbc #0
+	sta v+1
+	rts
+ snap():|
+	sta t
+	lda ne
+	sta m
+	and #127
+	tay
+	lda F.lo,y
+	sta v
+	lda F.hi,y
+	sta v+1
+	rts
+ porta(g,s):|
+	sta t
+	lda #g
+	bmi dn
+	clc
+	lda v
+	adc #<s
+	sta v
+	lda v+1
+	adc #>s
+	sta v+1
+	rts
+	dn:
+	sec
+	lda v
+	sbc #<s
+	sta v
+	lda v+1
+	sbc #>s
+	sta v+1
+	rts
+ tporta(s):|
+	lda ne
+	and #127
+	tay
+	sec
+	lda v
+	sbc F.lo,y
+	tax
+	lda v+1
+	sbc F.hi,y
+	bcc up
+	bne dn
+	txa
+	beq done
+	dn:
+	lda v
+	sbc #<s
+	sta v
+	lda v+1
+	sbc #>s
+	sta v+1
+	lda v
+	cmp F.lo,y
+	lda v+1
+	sbc F.hi,y
+	bcs done
+	snap:
+	lda F.lo,y
+	sta v
+	lda F.hi,y
+	sta v+1
+	lda ne
+	sta m
+	lda #0
+	sta t
+	done:
+	rts
+	up:
+	lda v
+	adc #<s
+	sta v
+	lda v+1
+	adc #>s
+	sta v+1
+	lda F.lo,y
+	cmp v
+	lda F.hi,y
+	sbc v+1
+	bcc snap
+	rts
 ins:
-  i2: {ad: 0, sr: 104, ctrl: c1, pw: ptab(1), filter: f1, wave.freq: note(), tick.freq: none, restart: [
-      {hold: 2, gate: 0, ad: 15, sr: 0}, {ctrl: 9, gate: 1, ad: 0, sr: 104, run: c2}, {}, end]}
-  i1: {ad: 2, sr: 170, ctrl: c3, pw: ptab(7), filter: f2, wave.freq: note(), tick.freq: none, restart: [
-      {hold: 2, gate: 0, ad: 15, sr: 0}, {ctrl: 9, gate: 1, ad: 2, sr: 170, run: c2}, {}, end]}
-  i4: {ad: 240, sr: 252, ctrl: c4, pw: ptab(11), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
-        gate: 0, ad: 15, sr: 0}, {ctrl: 9, gate: 1, ad: 240, sr: 252, run: c2}, {}, end]}
-  i5: {ad: 0, sr: 120, ctrl: c5, pw: ptab(3), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
-        gate: 0}, {ctrl: 9, gate: 1, ad: 0, sr: 120, run: c2}, {}, end]}
-  i6: {ad: 1, sr: 91, ctrl: c6, pw: ptab(1), wave.freq: note(), tick.freq: vib(8,2,176), restart: [{hold: 2,
-        gate: 0}, {ctrl: 9, gate: 1, ad: 1, sr: 91, run: c2}, {}, end]}
-  i7: {ad: 0, sr: 120, ctrl: c7, pw: ptab(3), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
-        gate: 0}, {ctrl: 9, gate: 1, ad: 0, sr: 120, run: c2}, {}, end]}
-  i3: {ad: 4, sr: 183, ctrl: c8, pw: ptab(1), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
-        gate: 0, ad: 15, sr: 0}, {ctrl: 9, gate: 1, ad: 4, sr: 183, run: c2}, {}, end]}
-  i8: {ad: 0, sr: 120, ctrl: c9, pw: ptab(3), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
-        gate: 0}, {ctrl: 9, gate: 1, ad: 0, sr: 120, run: c2}, {}, end]}
+ i2:{ad:0,sr:104,ctrl:c1,pw:ptab(1),filter:f1,wave.freq:note(),tick.freq:none,restart:[{hold:2,gate:0,ad:15,sr:0},{ctrl:9,gate:1,ad:0,sr:104,run:c2},{},end]}
+ i1:{ad:2,sr:170,ctrl:c3,pw:ptab(7),filter:f2,wave.freq:note(),tick.freq:none,restart:[{hold:2,gate:0,ad:15,sr:0},{ctrl:9,gate:1,ad:2,sr:170,run:c2},{},end]}
+ i4:{ad:240,sr:252,ctrl:c4,pw:ptab(11),wave.freq:note(),tick.freq:none,restart:[{hold:2,gate:0,ad:15,sr:0},{ctrl:9,gate:1,ad:240,sr:252,run:c2},{},end]}
+ i5:{ad:0,sr:120,ctrl:c5,pw:ptab(3),wave.freq:note(),tick.freq:none,restart:[{hold:2,gate:0},{ctrl:9,gate:1,ad:0,sr:120,run:c2},{},end]}
+ i6:{ad:1,sr:91,ctrl:c6,pw:ptab(1),wave.freq:note(),tick.freq:vib(8,2,176),restart:[{hold:2,gate:0},{ctrl:9,gate:1,ad:1,sr:91,run:c2},{},end]}
+ i7:{ad:0,sr:120,ctrl:c7,pw:ptab(3),wave.freq:note(),tick.freq:none,restart:[{hold:2,gate:0},{ctrl:9,gate:1,ad:0,sr:120,run:c2},{},end]}
+ i3:{ad:4,sr:183,ctrl:c8,pw:ptab(1),wave.freq:note(),tick.freq:none,restart:[{hold:2,gate:0,ad:15,sr:0},{ctrl:9,gate:1,ad:4,sr:183,run:c2},{},end]}
+ i8:{ad:0,sr:120,ctrl:c9,pw:ptab(3),wave.freq:note(),tick.freq:none,restart:[{hold:2,gate:0},{ctrl:9,gate:1,ad:0,sr:120,run:c2},{},end]}
 ctrl:
-  c1: [{ctrl: 129, note: G#7}, {ctrl: 65, note: C#3}, {note: G#2}, {note: C2}, {ctrl: 16, note: D2}, {
-      note: D2}, {note: C#2}, {note: A1}, end]
-  c2: [end]
-  c3: [{ctrl: 129, note: B7}, {ctrl: 65, note: +0}, end]
-  c4: [{ctrl: 65, note: +12}, {ctrl: 33, note: +12}, {ctrl: 65, note: +7}, {ctrl: 33, note: +7}, {ctrl: 65,
-      note: +4}, {ctrl: 33, note: +4}, {ctrl: 65, note: +0}, {ctrl: 33, note: +0}, {loop: 0}]
-  c5: [{ctrl: 65, note: +12}, {wait: 1, note: +7}, {wait: 1, note: +4}, {wait: 1, note: +0}, {loop: 1}]
-  c6: [{ctrl: 33, note: +12}, {ctrl: 65, note: +0}, end]
-  c7: [{ctrl: 65, note: +12}, {wait: 1, note: +9}, {wait: 1, note: +5}, {wait: 1, note: +0}, {loop: 1}]
-  c8: [{ctrl: 129, note: B7}, {ctrl: 64, note: A#3}, {ctrl: 64, note: F#3}, {ctrl: 128, note: B7}, {ctrl: 128,
-      note: G6}, {loop: 1}]
-  c9: [{ctrl: 65, note: +12}, {wait: 1, note: +8}, {wait: 1, note: +3}, {wait: 1, note: +0}, {loop: 1}]
+ c1:[{ctrl:129,note:g7},{ctrl:65,note:c3},{note:g2},{note:C2},{ctrl:16,note:D2},{note:D2},{note:c2},{note:A1},end]
+ c2:[end]
+ c3:[{ctrl:129,note:B7},{ctrl:65,note:+0},end]
+ c4:[{ctrl:65,note:+12},{ctrl:33,note:+12},{ctrl:65,note:+7},{ctrl:33,note:+7},{ctrl:65,note:+4},{ctrl:33,note:+4},{ctrl:65,note:+0},{ctrl:33,note:+0},{loop:0}]
+ c5:[{ctrl:65,note:+12},{wait:1,note:+7},{wait:1,note:+4},{wait:1,note:+0},{loop:1}]
+ c6:[{ctrl:33,note:+12},{ctrl:65,note:+0},end]
+ c7:[{ctrl:65,note:+12},{wait:1,note:+9},{wait:1,note:+5},{wait:1,note:+0},{loop:1}]
+ c8:[{ctrl:129,note:B7},{ctrl:64,note:a3},{ctrl:64,note:f3},{ctrl:128,note:B7},{ctrl:128,note:G6},{loop:1}]
+ c9:[{ctrl:65,note:+12},{wait:1,note:+8},{wait:1,note:+3},{wait:1,note:+0},{loop:1}]
 filter:
-  f1: [{cut: 768, res: 15, route: 1, mode: 48}, {cut: 56}, {cut: 16}, {cut: 8}, {cut: v}, end]
-  f2: [{cut: 592, res: 15, route: 1, mode: 16}, {cut: 384}, {cut: 256}, {cut: 128}, {cut: 80}, {cut: 16},
-    {cut: v}, end]
+ f1:[{cut:768,res:15,route:1,mode:48},{cut:56},{cut:16},{cut:8},{cut:v},end]
+ f2:[{cut:592,res:15,route:1,mode:16},{cut:384},{cut:256},{cut:128},{cut:80},{cut:16},{cut:v},end]
 phrase:
-  p0: [-, -!tempo:6]
-  p1: [C2.i2!tempo:3, -*3, C2.i1, -, C2, -, off, -*3, C2, -*3, C2.i2, -*3, C2.i1, -*3, off, -*3, C2, -*3,
-    C2.i2, -*3, G1.i1, -, G1, -*5, G1, -, off, -, C2.i2, -*3, G1.i1, -, off, -, F1, -, off, -, F1, -,
-    off, -]
-  p2: [G2.i2, -*3, G1.i1, -, G1, -, off, -*3, G1, -, off, -, G2.i2, -*3, G1.i1, -*3, C2!tick.freq:snap()!legato,
-    -!tick.freq:none, -*2, G1, -*2, off, C2.i2, -*3, C2.i1, -, C2, -*5, C2, -*3, G2.i2, -*3, C2.i1, -*3,
-    G1, -, off, -, G1, -, off, -]
-  p3: [C2.i2, -*3, C2.i1, -, C2, -, off, -*3, C2, -*3, C2.i2, -*3, C2.i1, -, off, -, B1, -*3, A1, -*3,
-    F1.i2, -*3, F1.i1, -, F1, -*5, F1, -*3, C2.i2, -*3, F1.i1, -*3, E1, -*3, F1, -, off, -]
-  p4: [C2.i2, -*3, G1.i1, -, G1, -, off, -*3, G1, -, off, -, C2.i2, -*3, G1.i1, off, -*2, A1, -*3, B1,
-    -*3, C2.i2, -*3, C2.i1, -, C2, -*5, C2, -*3, C2.i2, -*3, C2.i1, -*3, G1, -*3, A1, -, off, -]
-  p5: [C5.i4, -*9, off, -*21, G4, -*7, off, -*23]
-  p6: [G4.i4, -*9, off, -*21, C5, -*7, off, -*23]
-  p7: [C5.i4, -*9, off, -*21, F4, -*7, off, -*23]
-  p8: [G4.i4, -*9, off, -*21, C5, -*9, off, -*17, C5.i5, -*3]
-  p9: [G#4.i6!tick.freq:porta(1,32), A4!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -*9, F4!tick.freq:porta(1,32),
-    G4!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -*9, B4!tick.freq:porta(1,32), C5!tick.freq:snap()!legato,
-    -!tick.freq:vib(8,2,176), -*5, B4!tick.freq:snap()!legato, -*5, -!tick.freq:vib(8,2,176), -*5, -!sr:89,
-    -*3, off, -*7, F4!tick.freq:porta(1,32), G4!tick.freq:snap()!legato, off!tick.freq:vib(8,2,176), -,
-    G4, -*3]
-  p10: [G4.i6!tick.freq:porta(1,32), A4!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -*9, F4!tick.freq:porta(1,32),
-    G4!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -*9, C5!tick.freq:porta(1,32), D5!tick.freq:snap()!legato,
-    -!tick.freq:vib(8,2,176), -*5, C5!tick.freq:snap()!legato, -*4, -!tick.freq:vib(8,2,176), -*6, -!sr:89,
-    -*3, off, -*7, F4!tick.freq:porta(1,32), G4!tick.freq:snap()!legato, off!tick.freq:vib(8,2,176), -,
-    G4, -*3]
-  p11: [F5.i6!tick.freq:porta(1,288), G5!tick.freq:tporta(288)!legato, -*2, -!tick.freq:vib(8,2,176),
-    -*7, D5!tick.freq:porta(1,32), E5!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -*9, B4!tick.freq:porta(1,32),
-    C5!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -, C5, -*3, A#4!tick.freq:porta(1,32), B4!tick.freq:snap()!legato,
-    -!tick.freq:vib(8,2,176), -*9, A4!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -*10, E5!tick.freq:porta(1,32),
-    F5!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -, F5, -*3]
-  p12: [D5.i6!tick.freq:porta(1,32), E5!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -*9, B4!tick.freq:porta(1,32),
-    C5!tick.freq:snap()!legato, -!tick.freq:vib(8,2,176), -*9, C5!tick.freq:porta(1,32), D5!tick.freq:snap()!legato,
-    -!tick.freq:vib(8,2,176), -*5, C5!tick.freq:snap()!legato, -*3, -!tick.freq:vib(8,2,176), -*11, off,
-    -*15]
-  p13: [off, -*3, G4.i7, -, G4!ad:224, -, C1.i3, -*3, C5.i5, -*3, off, -*2, -!res:0!route:0!cut:hold,
-    E5.i8, -, off, -, C1.i3, -*3, C5.i5, -*3, off, -*3, D4.i7, -, D4!ad:224, -, D#1.i3, -*3, G4.i5, -*3,
-    off, -*3, B4.i8, -, off, -, F1.i3, -*3, G4.i5, -*3]
-  p14: [off, -*3, D4.i7, -, D4!ad:224, -, C1.i3, -*3, G4.i5, -*3, off, -*3, B4.i8, -, off, -, C1.i3, -*3,
-    G4.i5, -*3, off, -*3, G4.i7, -, G4!ad:224, -, D#1.i3, -*3, C5.i5, -*3, off, -*3, E5.i8, -, off, -,
-    F1.i3, -*3, C5.i5, -*3]
-  p15: [off, -*3, G4.i7, -, G4!ad:224, -, C1.i3, -*3, C5.i5, -*3, off, -*3, E5.i8, -, off, -, C1.i3, -*3,
-    C5.i5, -*3, off, -*3, C4.i7, -, C4!ad:224, -, D#1.i3, -*3, F4.i5, -*3, off, -*3, A4.i8, -, off, -,
-    F1.i3, -*3, F4.i5, -*3]
-  p16: [off, -*3, D4.i7, -, D4!ad:224, -, G0.i3, -*3, G4.i5, -*3, off, -*3, B4.i8, -, off, -, G0.i3, -*3,
-    G4.i5, -*3, off, -*3, G4.i7, -, G4!ad:224, -, D#1.i3, -*3, C5.i5, -*3, off, -*3, E5.i8, -, off, -,
-    F1.i3, -*3, F1, -, F1, -]
-init: [-.i1!vol:15!tempo:2, -.i1, -.i1]
+ p0:[-,- tempo:6]
+ p1:[C2.i2 tempo:3,-*3,C.i1,-,C,-,off,-*3,C,-*3,C.i2,-*3,C.i1,-*3,off,-*3,C,-*3,C.i2,-*3,G1.i1,-,G,-*5,G,-,off,-,C2.i2,-*3,G1.i1,-,off,-,F,-,off,-,F,-,off,-]
+ p2:[G2.i2,-*3,G1.i1,-,G,-,off,-*3,G,-,off,-,G2.i2,-*3,G1.i1,-*3,C2 tick.freq:snap() legato,- tick.freq:none,-*2,G1,-*2,off,C2.i2,-*3,C.i1,-,C,-*5,C,-*3,G.i2,-*3,C.i1,-*3,G1,-,off,-,G,-,off,-]
+ p3:[C2.i2,-*3,C.i1,-,C,-,off,-*3,C,-*3,C.i2,-*3,C.i1,-,off,-,B1,-*3,A,-*3,F.i2,-*3,F.i1,-,F,-*5,F,-*3,C2.i2,-*3,F1.i1,-*3,E,-*3,F,-,off,-]
+ p4:[C2.i2,-*3,G1.i1,-,G,-,off,-*3,G,-,off,-,C2.i2,-*3,G1.i1,off,-*2,A,-*3,B,-*3,C2.i2,-*3,C.i1,-,C,-*5,C,-*3,C.i2,-*3,C.i1,-*3,G1,-*3,A,-,off,-]
+ p5:[C5.i4,-*9,off,-*21,G4,-*7,off,-*23]
+ p6:[G4.i4,-*9,off,-*21,C5,-*7,off,-*23]
+ p7:[C5.i4,-*9,off,-*21,F4,-*7,off,-*23]
+ p8:[G4.i4,-*9,off,-*21,C5,-*9,off,-*17,C.i5,-*3]
+ p9:[g4.i6 tick.freq:porta(1,32),A tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*9,F tick.freq:porta(1,32),G tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*9,B tick.freq:porta(1,32),C5 tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*5,B4 tick.freq:snap() legato,-*5,- tick.freq:vib(8,2,176),-*5,- sr:89,-*3,off,-*7,F tick.freq:porta(1,32),G tick.freq:snap() legato,off tick.freq:vib(8,2,176),-,G,-*3]
+ p10:[G4.i6 tick.freq:porta(1,32),A tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*9,F tick.freq:porta(1,32),G tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*9,C5 tick.freq:porta(1,32),D tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*5,C tick.freq:snap() legato,-*4,- tick.freq:vib(8,2,176),-*6,- sr:89,-*3,off,-*7,F4 tick.freq:porta(1,32),G tick.freq:snap() legato,off tick.freq:vib(8,2,176),-,G,-*3]
+ p11:[F5.i6 tick.freq:porta(1,288),G tick.freq:tporta(288) legato,-*2,- tick.freq:vib(8,2,176),-*7,D tick.freq:porta(1,32),E tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*9,B4 tick.freq:porta(1,32),C5 tick.freq:snap() legato,- tick.freq:vib(8,2,176),-,C,-*3,a4 tick.freq:porta(1,32),B tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*9,A tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*10,E5 tick.freq:porta(1,32),F tick.freq:snap() legato,- tick.freq:vib(8,2,176),-,F,-*3]
+ p12:[D5.i6 tick.freq:porta(1,32),E tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*9,B4 tick.freq:porta(1,32),C5 tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*9,C tick.freq:porta(1,32),D tick.freq:snap() legato,- tick.freq:vib(8,2,176),-*5,C tick.freq:snap() legato,-*3,- tick.freq:vib(8,2,176),-*11,off,-*15]
+ p13:[off,-*3,G4.i7,-,G ad:224,-,C1.i3,-*3,C5.i5,-*3,off,-*2,- res:0 route:0 cut:hold,E.i8,-,off,-,C1.i3,-*3,C5.i5,-*3,off,-*3,D4.i7,-,D ad:224,-,d1.i3,-*3,G4.i5,-*3,off,-*3,B.i8,-,off,-,F1.i3,-*3,G4.i5,-*3]
+ p14:[off,-*3,D4.i7,-,D ad:224,-,C1.i3,-*3,G4.i5,-*3,off,-*3,B.i8,-,off,-,C1.i3,-*3,G4.i5,-*3,off,-*3,G.i7,-,G ad:224,-,d1.i3,-*3,C5.i5,-*3,off,-*3,E.i8,-,off,-,F1.i3,-*3,C5.i5,-*3]
+ p15:[off,-*3,G4.i7,-,G ad:224,-,C1.i3,-*3,C5.i5,-*3,off,-*3,E.i8,-,off,-,C1.i3,-*3,C5.i5,-*3,off,-*3,C4.i7,-,C ad:224,-,d1.i3,-*3,F4.i5,-*3,off,-*3,A.i8,-,off,-,F1.i3,-*3,F4.i5,-*3]
+ p16:[off,-*3,D4.i7,-,D ad:224,-,G0.i3,-*3,G4.i5,-*3,off,-*3,B.i8,-,off,-,G0.i3,-*3,G4.i5,-*3,off,-*3,G.i7,-,G ad:224,-,d1.i3,-*3,C5.i5,-*3,off,-*3,E.i8,-,off,-,F1.i3,-*3,F,-,F,-]
+init:[-.i1 vol:15 tempo:2,-.i1,-.i1]
 song:
-  - play: [p0, p0, p0]
-  - play: [p1, p5, p13]
-  - play: [p2, p6, p14]
-  - play: [p3, p7, p15]
-  - play: [p4, p8, p16]
-  - play: [p1, p9, p13]
-  - play: [p2, p10, p14]
-  - play: [p3, p11, p15]
-  - play: [p4, p12, p16]
-  - {loop: 1}
+ - play:[p0,p0,p0]
+ - play:[p1,p5,p13]
+ - play:[p2,p6,p14]
+ - play:[p3,p7,p15]
+ - play:[p4,p8,p16]
+ - play:[p1,p9,p13]
+ - play:[p2,p10,p14]
+ - play:[p3,p11,p15]
+ - play:[p4,p12,p16]
+ - {loop:1}

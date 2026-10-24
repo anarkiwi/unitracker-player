@@ -1,358 +1,301 @@
-unitracker: 2.1
-meta: {title: Crosseyed, author: Ilija Melentijevic (iLKke), released: 2021 Funkentstört}
-clock: {cycles_per_tick: 19656, clock_hz: 985248}
-tempo: 1
-slots: {freq: {n: {reset: [note]}, p: {}}, pw: {pw: {reset: [row.pw]}}, cut: {k1: {reset: [row.cut]}, k2: {reset: [row.cut]}, k3: {reset: [row.cut]}, st: {}}}
-state: {freq: {s: 2, d: 1}, pw: {w: 2, q: 1, e: 1}, cut: {r: 2, z: 2, o: 1, cp: 1, l: 1, b: 1}}
+unitracker:2.2
+meta:{title:Crosseyed,author:Ilija Melentijevic (iLKke),released:2021 Funkentstört}
+clock:{cycles_per_tick:19656,clock_hz:985248}
+tempo:1
+slots:{freq:{n:{reset:[note]},p:{}},pw:{pw:{reset:[row.pw]}},cut:{k1:{reset:[row.cut]},k2:{reset:[row.cut]},k3:{reset:[row.cut]},st:{}}}
+state:{freq:{s:2,d:1},pw:{w:2,q:1,e:1},cut:{r:2,z:2,o:1,cp:1,l:1,b:1}}
 tables:
-  G: [70, 74, 78, 83, 88, 93, 98, 104, 110, 117, 124, 131, 139, 147, 156, 166, 175, 186, 197, 209, 221,
-    234, 248, 263, 278, 295, 313, 331, 351, 372, 394, 417, 442, 468, 496, 526, 557, 590, 625, 662, 702,
-    743, 788, 834, 884, 937, 992, 1051, 1114, 1180, 1250, 1325, 1403, 1487, 1575, 1669, 1768, 1873, 1985,
-    2103, 2228, 2360, 2500, 2649, 2807, 2973, 3150, 3338, 3536, 3746, 3969, 4205, 4455, 4720, 5001, 5298,
-    5613, 5947, 6300, 6675, 7072, 7493, 7938, 8410, 8910, 9440, 10001, 10596, 11226, 11894, 12601, 13350,
-    14144, 14985, 15876, 16820, 17820, 18880, 20003, 21192, 22452, 23787, 25202, 26700, 28288, 29970,
-    31752, 33640, 35641, 37760, 40005, 42384, 44904, 47574, 50403, 53401, 56576, 59940, 63504, 65535,
-    34048, 64256, 40960, 0, 45312, 64256, 61440, 23040, 2560, 34048, 38400, 4096, 1536, 51200, 45312,
-    64256, 40192, 15104, 4096, 36864, 1536, 51200, 45312, 64256, 40192, 15616, 4096, 9216, 38400, 20480,
-    1536, 51200, 45312, 64256, 40192, 14592, 4096, 42240, 38400, 10496, 8192, 61440, 1536, 51200, 45312,
-    64256, 40192, 14080, 4096, 42240, 38400, 10496, 4096, 61440, 3584, 51200, 45312, 64256, 12288, 1025,
-    6145, 32001, 60673, 4609, 10497, 32513, 40193, 32513, 4865, 42241, 38401, 10498, 2050, 61442, 1538,
-    51202, 45314, 64258, 40195, 6915, 4099, 42243, 38403, 10500, 1028, 61444, 2820, 51205, 45317, 64261,
-    40198, 9478, 4102, 10503, 61447, 40200, 8968, 4105, 51209, 45322, 64266, 61451, 32268, 2573, 34061,
-    38414, 36879, 1552, 51217, 45330, 64275, 40212, 7701, 4119, 42264, 38426, 61467, 28445, 10527, 32800,
-    61474, 9252, 51239, 45353, 64299, 61486, 2353, 10548, 2103, 53306, 3646, 45377, 64325, 19529, 19278,
-    5970]
-  P: [12, 17, 18, 20, 21, 22, 23, 25, 26, 28, 29, 31, 33, 35, 37, 39, 41, 44, 46, 49, 52, 55, 59, 62,
-    66, 70, 74, 78, 83, 88, 93, 98, 104, 110, 117, 124, 131, 139, 147, 156, 166, 175, 186, 197, 209, 221,
-    234, 248, 263, 278, 295, 313, 331, 351, 372, 394, 417, 442, 468, 496, 526, 557, 590, 625, 662, 702,
-    743, 788, 834, 884, 937, 992, 1051, 1114, 1180, 1250, 1325, 1403, 1487, 1575, 1669, 1768, 1873, 1985,
-    2103, 2228, 2360, 2500, 2649, 2807, 2973, 3150, 3338, 3536, 3746, 3969, 4205, 4455, 4720, 5001, 5298,
-    5613, 5947, 6300, 6675, 7072, 7493, 7938, 8410, 8910, 9440, 10001, 10596, 11226, 11894, 12601, 13350,
-    14144, 14985, 15876, 16820, 17820, 18880, 20003, 21192, 22452, 23787, 25202, 26700, 28288, 29970,
-    31752, 33640, 35641, 37760, 40005, 42384, 44904, 47574, 50403, 53401, 56576, 59940, 63504, 65535,
-    34048, 64256, 40960, 0, 45312, 64256, 61440, 23040, 2560, 34048, 38400, 4096, 1536, 51200, 45312,
-    64256, 40192, 15104, 4096, 36864, 1536, 51200, 45312, 64256, 40192, 15616, 4096, 9216, 38400, 20480,
-    1536, 51200, 45312, 64256, 40192, 14592, 4096, 42240, 38400, 10496, 8192, 61440, 1536, 51200, 45312,
-    64256, 40192, 14080, 4096, 42240, 38400, 10496, 4096, 61440, 3584, 51200, 45312, 64256, 12288, 1025,
-    6145, 32001, 60673, 4609, 10497, 32513, 40193, 32513, 4865, 42241, 38401, 10498, 2050, 61442, 1538,
-    51202, 45314, 64258, 40195, 6915, 4099, 42243, 38403, 10500, 1028, 61444, 2820, 51205, 45317, 64261,
-    40198, 9478, 4102, 10503, 61447, 40200, 8968, 4105, 51209, 45322, 64266, 61451, 32268, 2573, 34061,
-    38414, 36879, 1552, 51217, 45330, 64275, 40212]
-  R: [0, 0, 1, 1, 2, 2, 4, 4, 8, 8, 12, 12, 17, 18, 20, 21, 22, 23, 25, 26, 28, 29, 31, 33, 35, 37, 39,
-    41, 44, 46, 49, 52, 55, 59, 62, 66, 70, 74, 78, 83, 88, 93, 98, 104, 110, 117, 124, 131, 139, 147,
-    156, 166, 175, 186, 197, 209, 221, 234, 248, 263, 278, 295, 313, 331, 351, 372, 394, 417, 442, 468,
-    496, 526, 557, 590, 625, 662, 702, 743, 788, 834, 884, 937, 992, 1051, 1114, 1180, 1250, 1325, 1403,
-    1487, 1575, 1669, 1768, 1873, 1985, 2103, 2228, 2360, 2500, 2649, 2807, 2973, 3150, 3338, 3536, 3746,
-    3969, 4205, 4455, 4720, 5001, 5298, 5613, 5947, 6300, 6675, 7072, 7493, 7938, 8410, 8910, 9440, 10001,
-    10596, 11226, 11894, 12601, 13350]
+ G:[70,74,78,83,88,93,98,104,110,117,124,131,139,147,156,166,175,186,197,209,221,234,248,263,278,295,313,331,351,372,394,417,442,468,496,526,557,590,625,662,702,743,788,834,884,937,992,1051,1114,1180,1250,1325,1403,1487,1575,1669,1768,1873,1985,2103,2228,2360,2500,2649,2807,2973,3150,3338,3536,3746,3969,4205,4455,4720,5001,5298,5613,5947,6300,6675,7072,7493,7938,8410,8910,9440,10001,10596,11226,11894,12601,13350,14144,14985,15876,16820,17820,18880,20003,21192,22452,23787,25202,26700,28288,29970,31752,33640,35641,37760,40005,42384,44904,47574,50403,53401,56576,59940,63504,65535,34048,64256,40960,0,45312,64256,61440,23040,2560,34048,38400,4096,1536,51200,45312,64256,40192,15104,4096,36864,1536,51200,45312,64256,40192,15616,4096,9216,38400,20480,1536,51200,45312,64256,40192,14592,4096,42240,38400,10496,8192,61440,1536,51200,45312,64256,40192,14080,4096,42240,38400,10496,4096,61440,3584,51200,45312,64256,12288,1025,6145,32001,60673,4609,10497,32513,40193,32513,4865,42241,38401,10498,2050,61442,1538,51202,45314,64258,40195,6915,4099,42243,38403,10500,1028,61444,2820,51205,45317,64261,40198,9478,4102,10503,61447,40200,8968,4105,51209,45322,64266,61451,32268,2573,34061,38414,36879,1552,51217,45330,64275,40212,7701,4119,42264,38426,61467,28445,10527,32800,61474,9252,51239,45353,64299,61486,2353,10548,2103,53306,3646,45377,64325,19529,19278,5970]
+ P:[12,17,18,20,21,22,23,25,26,28,29,31,33,35,37,39,41,44,46,49,52,55,59,62,66,70,74,78,83,88,93,98,104,110,117,124,131,139,147,156,166,175,186,197,209,221,234,248,263,278,295,313,331,351,372,394,417,442,468,496,526,557,590,625,662,702,743,788,834,884,937,992,1051,1114,1180,1250,1325,1403,1487,1575,1669,1768,1873,1985,2103,2228,2360,2500,2649,2807,2973,3150,3338,3536,3746,3969,4205,4455,4720,5001,5298,5613,5947,6300,6675,7072,7493,7938,8410,8910,9440,10001,10596,11226,11894,12601,13350,14144,14985,15876,16820,17820,18880,20003,21192,22452,23787,25202,26700,28288,29970,31752,33640,35641,37760,40005,42384,44904,47574,50403,53401,56576,59940,63504,65535,34048,64256,40960,0,45312,64256,61440,23040,2560,34048,38400,4096,1536,51200,45312,64256,40192,15104,4096,36864,1536,51200,45312,64256,40192,15616,4096,9216,38400,20480,1536,51200,45312,64256,40192,14592,4096,42240,38400,10496,8192,61440,1536,51200,45312,64256,40192,14080,4096,42240,38400,10496,4096,61440,3584,51200,45312,64256,12288,1025,6145,32001,60673,4609,10497,32513,40193,32513,4865,42241,38401,10498,2050,61442,1538,51202,45314,64258,40195,6915,4099,42243,38403,10500,1028,61444,2820,51205,45317,64261,40198,9478,4102,10503,61447,40200,8968,4105,51209,45322,64266,61451,32268,2573,34061,38414,36879,1552,51217,45330,64275,40212]
+ R:[0,0,1,1,2,2,4,4,8,8,12,12,17,18,20,21,22,23,25,26,28,29,31,33,35,37,39,41,44,46,49,52,55,59,62,66,70,74,78,83,88,93,98,104,110,117,124,131,139,147,156,166,175,186,197,209,221,234,248,263,278,295,313,331,351,372,394,417,442,468,496,526,557,590,625,662,702,743,788,834,884,937,992,1051,1114,1180,1250,1325,1403,1487,1575,1669,1768,1873,1985,2103,2228,2360,2500,2649,2807,2973,3150,3338,3536,3746,3969,4205,4455,4720,5001,5298,5613,5947,6300,6675,7072,7493,7938,8410,8910,9440,10001,10596,11226,11894,12601,13350]
 mod:
-  pitch(): |
-    lda nn
-    and #127
-    tay
-    lda G.lo,y
-    clc
-    adc d
-    sta v
-    lda G.hi,y
-    sta v+1
-    rts
-  pul(g, p, h): |
-    lda phi
-    ora phi+1
-    bne step
-    lda #g
-    lsr
-    bcc pss
-    lda #p
-    sta w+1
-    and #240
-    sta w
-    pss:
-    lda #g
-    and #2
-    beq step
-    lda #h
-    sta q
-    step:
-    ldy q
-    beq out
-    bpl dn
-    tya
-    and #127
-    clc
-    adc w
-    sta w
-    bcc out
-    lda w+1
-    cmp #15
-    beq top
-    inc w+1
-    jmp out
-    top:
-    lda #248
-    sta w
-    tya
-    eor #128
-    sta q
-    jmp out
-    dn:
-    lda nn
-    and #127
-    tax
-    lda G.lo,x
-    clc
-    adc e
-    lda w
-    sbc q
-    sta w
-    bcs out
-    lda w+1
-    beq bot
-    dec w+1
-    jmp out
-    bot:
-    lda #1
-    sta w
-    tya
-    eor #128
-    sta q
-    out:
-    lda w
-    sta v
-    lda w+1
-    sta v+1
-    rts
-  slide(m): |
-    lda #m
-    asl
-    and #127
-    tax
-    lda #m
-    and #64
-    bne dn
-    clc
-    lda R.lo,x
-    adc s
-    sta s
-    lda R.hi,x
-    adc s+1
-    sta s+1
-    jmp sum
-    dn:
-    sec
-    lda s
-    sbc R.lo,x
-    sta s
-    lda s+1
-    sbc R.hi,x
-    sta s+1
-    sum:
-    lda nn
-    and #127
-    tay
-    clc
-    lda s
-    adc G.lo,y
-    sta v
-    lda G.hi,y
-    adc s+1
-    sta v+1
-    rts
-  acid(g, c, j): |
-    lda phi
-    ora phi+1
-    bne done
-    lda #g
-    lsr
-    bcc acc
-    lda #c
-    sta cp
-    acc:
-    lda #g
-    and #2
-    beq add
-    lda #<j
-    sta r
-    lda #>j
-    sta r+1
-    lda #0
-    sta z
-    sta z+1
-    add:
-    lda #g
-    and #12
-    beq done
-    lsr
-    lsr
-    lsr
-    sta o
-    lda #<j
-    sta z
-    lda #>j
-    sta z+1
-    done:
-    rts
-  pinit(k, f): |
-    lda phi
-    ora phi+1
-    bne out
-    lda #k
-    sta e
-    lda #<f
-    sta w
-    lda #>f
-    sta w+1
-    out:
-    lda w
-    sta v
-    lda w+1
-    sta v+1
-    rts
-  cinit(u, f, k): |
-    lda phi
-    ora phi+1
-    bne step
-    lda #u
-    sta o
-    lda #f
-    sta l
-    lda #k
-    sta b
-    step:
-    lda o
-    bne sb
-    clc
-    lda r
-    adc z
-    sta r
-    lda r+1
-    adc z+1
-    jmp hi
-    sb:
-    clc
-    lda r
-    sbc z
-    sta r
-    lda r+1
-    sbc z+1
-    hi:
-    bpl keep
-    lda l
-    keep:
-    sta r+1
-    adc cp
-    bmi low
-    cmp l
-    bcs put
-    low:
-    lda l
-    put:
-    ldx b
-    beq out
-    asl
-    out:
-    sta v
-    lda #0
-    sta v+1
-    asl v
-    rol v+1
-    asl v
-    rol v+1
-    asl v
-    rol v+1
-    rts
-  nr(k, f): |
-    lda phi
-    ora phi+1
-    bne done
-    sta s
-    sta s+1
-    lda #k
-    sta d
-    lda #<f
-    sta v
-    lda #>f
-    sta v+1
-    done:
-    rts
+ pitch():|
+	lda nn
+	and #127
+	tay
+	lda G.lo,y
+	clc
+	adc d
+	sta v
+	lda G.hi,y
+	sta v+1
+	rts
+ pul(g,p,h):|
+	lda phi
+	ora phi+1
+	bne step
+	lda #g
+	lsr
+	bcc pss
+	lda #p
+	sta w+1
+	and #240
+	sta w
+	pss:
+	lda #g
+	and #2
+	beq step
+	lda #h
+	sta q
+	step:
+	ldy q
+	beq out
+	bpl dn
+	tya
+	and #127
+	clc
+	adc w
+	sta w
+	bcc out
+	lda w+1
+	cmp #15
+	beq top
+	inc w+1
+	jmp out
+	top:
+	lda #248
+	sta w
+	tya
+	eor #128
+	sta q
+	jmp out
+	dn:
+	lda nn
+	and #127
+	tax
+	lda G.lo,x
+	clc
+	adc e
+	lda w
+	sbc q
+	sta w
+	bcs out
+	lda w+1
+	beq bot
+	dec w+1
+	jmp out
+	bot:
+	lda #1
+	sta w
+	tya
+	eor #128
+	sta q
+	out:
+	lda w
+	sta v
+	lda w+1
+	sta v+1
+	rts
+ slide(m):|
+	lda #m
+	asl
+	and #127
+	tax
+	lda #m
+	and #64
+	bne dn
+	clc
+	lda R.lo,x
+	adc s
+	sta s
+	lda R.hi,x
+	adc s+1
+	sta s+1
+	jmp sum
+	dn:
+	sec
+	lda s
+	sbc R.lo,x
+	sta s
+	lda s+1
+	sbc R.hi,x
+	sta s+1
+	sum:
+	lda nn
+	and #127
+	tay
+	clc
+	lda s
+	adc G.lo,y
+	sta v
+	lda G.hi,y
+	adc s+1
+	sta v+1
+	rts
+ acid(g,c,j):|
+	lda phi
+	ora phi+1
+	bne done
+	lda #g
+	lsr
+	bcc acc
+	lda #c
+	sta cp
+	acc:
+	lda #g
+	and #2
+	beq add
+	lda #<j
+	sta r
+	lda #>j
+	sta r+1
+	lda #0
+	sta z
+	sta z+1
+	add:
+	lda #g
+	and #12
+	beq done
+	lsr
+	lsr
+	lsr
+	sta o
+	lda #<j
+	sta z
+	lda #>j
+	sta z+1
+	done:
+	rts
+ pinit(k,f):|
+	lda phi
+	ora phi+1
+	bne out
+	lda #k
+	sta e
+	lda #<f
+	sta w
+	lda #>f
+	sta w+1
+	out:
+	lda w
+	sta v
+	lda w+1
+	sta v+1
+	rts
+ cinit(u,f,k):|
+	lda phi
+	ora phi+1
+	bne step
+	lda #u
+	sta o
+	lda #f
+	sta l
+	lda #k
+	sta b
+	step:
+	lda o
+	bne sb
+	clc
+	lda r
+	adc z
+	sta r
+	lda r+1
+	adc z+1
+	jmp hi
+	sb:
+	clc
+	lda r
+	sbc z
+	sta r
+	lda r+1
+	sbc z+1
+	hi:
+	bpl keep
+	lda l
+	keep:
+	sta r+1
+	adc cp
+	bmi low
+	cmp l
+	bcs put
+	low:
+	lda l
+	put:
+	ldx b
+	beq out
+	asl
+	out:
+	sta v
+	lda #0
+	sta v+1
+	asl v
+	rol v+1
+	asl v
+	rol v+1
+	asl v
+	rol v+1
+	rts
+ nr(k,f):|
+	lda phi
+	ora phi+1
+	bne done
+	sta s
+	sta s+1
+	lda #k
+	sta d
+	lda #<f
+	sta v
+	lda #>f
+	sta v+1
+	done:
+	rts
 ins:
-  i1: {p.freq: pitch()}
+ i1:{p.freq:pitch()}
 ctrl:
-  c1: [{mask: 8, gate: 0}, end]
-  c2: [{hold: 2, ctrl: 65, mask: 0, gate: 1, ad: 0, sr: 246, pw: pul(3,1,0), p.freq: slide(216)}, {ctrl: 17,
-      mask: 0, gate: 0, p.freq: slide(216)}, end]
-  c3: [{ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0), k2.cut: acid(2,0,16384),
-      res: 15, route: 7, mode: 16}, {k2.cut: acid(8,0,512)}, {mask: 0, gate: 0, note: +0}, {k2.cut: acid(8,0,512)},
-    {}, {loop: 3}]
-  c4: [{mask: 8, gate: 0}, end]
-  c5: [{hold: 2, ctrl: 81, mask: 4, gate: 1, note: +12, ad: 0, sr: 68, pw: pul(3,1,0)}, {mask: 4, gate: 0},
-    end]
-  c6: [{mask: 8, gate: 0}, end]
-  c7: [{hold: 2, ctrl: 65, mask: 0, gate: 1, sr: 243, pw: pul(3,8,0)}, {hold: 3, ctrl: 129, mask: 0, gate: 0,
-      note: E4}, {}, end]
-  c8: [{k2.cut: acid(2,0,16384), res: 15, route: 7, mode: 16}, {k2.cut: acid(8,0,512)}, {}, {k2.cut: acid(8,0,512)},
-    {loop: 2}]
-  c9: [{hold: 2, ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0), k2.cut: acid(4,0,2560),
-      mode: 32}, {mask: 0, gate: 0, note: +0}, end]
-  c10: [{ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {k2.cut: acid(8,0,512)},
-    {mask: 0, gate: 0, note: +0}, {k2.cut: acid(8,0,512)}, {}, {loop: 3}]
-  c11: [{k2.cut: acid(4,0,2560), mode: 32}, end]
-  c12: [{ctrl: 81, mask: 4, gate: 1, note: +12, ad: 0, sr: 68, pw: pul(3,1,0)}, {k2.cut: acid(8,0,512)},
-    {mask: 4, gate: 0}, {k2.cut: acid(8,0,512)}, {}, {loop: 3}]
-  c13: [{hold: 2, ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {mask: 0, gate: 0,
-      note: +0}, end]
-  c14: [{mask: 0, gate: 0}, end]
-  c15: [{hold: 2, ctrl: 17, mask: 2, gate: 1, note: +24, ad: 0, sr: 249, pw: pul(3,8,0)}, {hold: 2, mask: 2,
-      gate: 0, note: +0}, {hold: 2, note: +12}, {hold: 2, mask: 2, gate: 0, note: +0}, {loop: 2}]
-  c16: [{mask: 8, gate: 0}, {hold: 2, note: +12}, {hold: 2, mask: 2, gate: 0, note: +0}, {loop: 1}]
-  c17: [{mask: 8, gate: 0}, {hold: 2, mask: 2, gate: 0, note: +0}, {hold: 2, note: +12}, {loop: 1}]
-  c18: [{hold: 2, ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {mask: 0, gate: 0,
-      note: +0}, end]
+ c1:[{mask:8,gate:0},end]
+ c2:[{hold:2,ctrl:65,mask:0,gate:1,ad:0,sr:246,pw:pul(3,1,0),p.freq:slide(216)},{ctrl:17,mask:0,gate:0,p.freq:slide(216)},end]
+ c3:[{ctrl:65,mask:0,gate:1,note:+0,ad:1,sr:152,pw:pul(3,8,0),k2.cut:acid(2,0,16384),res:15,route:7,mode:16},{k2.cut:acid(8,0,512)},{mask:0,gate:0,note:+0},{k2.cut:acid(8,0,512)},{},{loop:3}]
+ c4:[{mask:8,gate:0},end]
+ c5:[{hold:2,ctrl:81,mask:4,gate:1,note:+12,ad:0,sr:68,pw:pul(3,1,0)},{mask:4,gate:0},end]
+ c6:[{mask:8,gate:0},end]
+ c7:[{hold:2,ctrl:65,mask:0,gate:1,sr:243,pw:pul(3,8,0)},{hold:3,ctrl:129,mask:0,gate:0,note:E4},{},end]
+ c8:[{k2.cut:acid(2,0,16384),res:15,route:7,mode:16},{k2.cut:acid(8,0,512)},{},{k2.cut:acid(8,0,512)},{loop:2}]
+ c9:[{hold:2,ctrl:65,mask:0,gate:1,note:+0,ad:1,sr:152,pw:pul(3,8,0),k2.cut:acid(4,0,2560),mode:32},{mask:0,gate:0,note:+0},end]
+ c10:[{ctrl:65,mask:0,gate:1,note:+0,ad:1,sr:152,pw:pul(3,8,0)},{k2.cut:acid(8,0,512)},{mask:0,gate:0,note:+0},{k2.cut:acid(8,0,512)},{},{loop:3}]
+ c11:[{k2.cut:acid(4,0,2560),mode:32},end]
+ c12:[{ctrl:81,mask:4,gate:1,note:+12,ad:0,sr:68,pw:pul(3,1,0)},{k2.cut:acid(8,0,512)},{mask:4,gate:0},{k2.cut:acid(8,0,512)},{},{loop:3}]
+ c13:[{hold:2,ctrl:65,mask:0,gate:1,note:+0,ad:1,sr:152,pw:pul(3,8,0)},{mask:0,gate:0,note:+0},end]
+ c14:[{mask:0,gate:0},end]
+ c15:[{hold:2,ctrl:17,mask:2,gate:1,note:+24,ad:0,sr:249,pw:pul(3,8,0)},{hold:2,mask:2,gate:0,note:+0},{hold:2,note:+12},{hold:2,mask:2,gate:0,note:+0},{loop:2}]
+ c16:[{mask:8,gate:0},{hold:2,note:+12},{hold:2,mask:2,gate:0,note:+0},{loop:1}]
+ c17:[{mask:8,gate:0},{hold:2,mask:2,gate:0,note:+0},{hold:2,note:+12},{loop:1}]
+ c18:[{hold:2,ctrl:65,mask:0,gate:1,note:+0,ad:1,sr:152,pw:pul(3,8,0)},{mask:0,gate:0,note:+0},end]
 phrase:
-  p0: [-]
-  p1: [-!p.freq:pitch(), -!run:c1, -*2, C5!run:c2, -*8, -!run:c4, -*2, C5!run:c5, -*8, -!run:c6, -*2,
-    C6!run:c7, -*11, D#5!run:c5, -*11, C5!run:c5, -*8, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4, -*2, C6!run:c7,
-    -*11, F5!run:c5, -*6]
-  p2: [-!p.freq:pitch(), -*3, C4!run:c3, -*23, -!run:c8, -*11, A#3!run:c9, -*23, -!run:c8, -*23, A#3!run:c10,
-    -*6]
-  p3: [-!p.freq:pitch(), -*94]
-  p4: [-*2, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4, -*2, C5!run:c5, -*8, -!run:c6, -*2, C6!run:c7, -*11,
-    D#5!run:c5, -*11, C5!run:c5, -*8, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4, -*2, C6!run:c7, -*11, F5!run:c5,
-    -*6]
-  p5: [-*5, C4!run:c9, -*11, -!run:c11, -*11, -!run:c8, -*11, C4!run:c10, -*11, -!run:c8, -*11, A#4!run:c10,
-    -*11, D#6!run:c12, -*11, A#3!run:c3, -*6]
-  p6: [-*96]
-  p7: [-*5, C4!run:c3, -*23, -!run:c8, -*11, A#3!run:c9, -*23, -!run:c8, -*23, A#3!run:c10, -*6]
-  p8: [-*2, -!run:c1, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
-  p9: [-*5, A#5!run:c15, -*35, D#5!run:c15, -*29, F5!run:c15, -*24]
-  p10: [-*2, -!run:c16, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
-  p11: [-*2, -!run:c17, -*2, G4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*11, F4!run:c18, -*11, F6!run:c15,
-    -*11, C6!run:c18, -*23, A#5!run:c15, -*6]
-  p12: [-*2, -!run:c17, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
-init: [-.i1!pw:pinit(0,256)!ctrl:1!vol:15!st.cut:cinit(1,2,0)!n.freq:nr(0,4455), -.i1!pw:pinit(1,2048)!ctrl:1!n.freq:nr(1,1115),
-  -.i1!pw:pinit(2,2048)!ctrl:1!n.freq:nr(2,3971)]
+ p0:[-]
+ p1:[- p.freq:pitch(),- run:c1,-*2,C5 run:c2,-*8,- run:c4,-*2,C run:c5,-*8,- run:c6,-*2,C6 run:c7,-*11,d5 run:c5,-*11,C run:c5,-*8,- run:c6,-*2,C run:c2,-*8,- run:c4,-*2,C6 run:c7,-*11,F5 run:c5,-*6]
+ p2:[- p.freq:pitch(),-*3,C4 run:c3,-*23,- run:c8,-*11,a3 run:c9,-*23,- run:c8,-*23,a run:c10,-*6]
+ p3:[- p.freq:pitch(),-*94]
+ p4:[-*2,- run:c6,-*2,C5 run:c2,-*8,- run:c4,-*2,C run:c5,-*8,- run:c6,-*2,C6 run:c7,-*11,d5 run:c5,-*11,C run:c5,-*8,- run:c6,-*2,C run:c2,-*8,- run:c4,-*2,C6 run:c7,-*11,F5 run:c5,-*6]
+ p5:[-*5,C4 run:c9,-*11,- run:c11,-*11,- run:c8,-*11,C run:c10,-*11,- run:c8,-*11,a run:c10,-*11,d6 run:c12,-*11,a3 run:c3,-*6]
+ p6:[-*96]
+ p7:[-*5,C4 run:c3,-*23,- run:c8,-*11,a3 run:c9,-*23,- run:c8,-*23,a run:c10,-*6]
+ p8:[-*2,- run:c1,-*2,F4 run:c13,-*11,- run:c14,-*11,d6 run:c15,-*35,C run:c15,-*30]
+ p9:[-*5,a5 run:c15,-*35,d run:c15,-*29,F run:c15,-*24]
+ p10:[-*2,- run:c16,-*2,F4 run:c13,-*11,- run:c14,-*11,d6 run:c15,-*35,C run:c15,-*30]
+ p11:[-*2,- run:c17,-*2,G4 run:c13,-*11,- run:c14,-*11,d6 run:c15,-*11,F4 run:c18,-*11,F6 run:c15,-*11,C run:c18,-*23,a5 run:c15,-*6]
+ p12:[-*2,- run:c17,-*2,F4 run:c13,-*11,- run:c14,-*11,d6 run:c15,-*35,C run:c15,-*30]
+init:[-.i1 pw:pinit(0,256) ctrl:1 vol:15 st.cut:cinit(1,2,0) n.freq:nr(0,4455),-.i1 pw:pinit(1,2048) ctrl:1 n.freq:nr(1,1115),-.i1 pw:pinit(2,2048) ctrl:1 n.freq:nr(2,3971)]
 song:
-  - play: [p0, p0, p0]
-  - play: [p1, p2, p3]
-  - play: [p4, p5, p6]
-  - play: [p4, p7, p6]
-  - play: [p4, p5, p6]
-  - play: [p4, p7, p6]
-  - play: [p4, p5, p6]
-  - play: [p4, p7, p6]
-  - play: [p4, p5, p6]
-  - play: [p4, p7, p8]
-  - play: [p4, p5, p9]
-  - play: [p4, p7, p10]
-  - play: [p4, p5, p11]
-  - play: [p4, p7, p6]
-  - play: [p4, p5, p6]
-  - play: [p4, p7, p6]
-  - play: [p4, p5, p6]
-  - play: [p4, p7, p6]
-  - play: [p4, p5, p6]
-  - play: [p4, p7, p6]
-  - play: [p4, p5, p6]
-  - play: [p4, p7, p12]
-  - {loop: 10}
+ - play:[p0,p0,p0]
+ - play:[p1,p2,p3]
+ - play:[p4,p5,p6]
+ - play:[p4,p7,p6]
+ - play:[p4,p5,p6]
+ - play:[p4,p7,p6]
+ - play:[p4,p5,p6]
+ - play:[p4,p7,p6]
+ - play:[p4,p5,p6]
+ - play:[p4,p7,p8]
+ - play:[p4,p5,p9]
+ - play:[p4,p7,p10]
+ - play:[p4,p5,p11]
+ - play:[p4,p7,p6]
+ - play:[p4,p5,p6]
+ - play:[p4,p7,p6]
+ - play:[p4,p5,p6]
+ - play:[p4,p7,p6]
+ - play:[p4,p5,p6]
+ - play:[p4,p7,p6]
+ - play:[p4,p5,p6]
+ - play:[p4,p7,p12]
+ - {loop:10}

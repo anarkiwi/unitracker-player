@@ -124,7 +124,7 @@ class _Expander:
         if call not in self.names:
             name = f"{PREFIX[self.forms[call.name][0]]}{next(self.number)}"
             self.names[call] = name
-            line = f"{self.indent}{name}: {self.body(call)}\n"
+            line = f"{self.indent}{name}:{self.body(call)}\n"
             self.lines.setdefault(call.name, []).append(line)
         return self.names[call]
 
@@ -132,7 +132,7 @@ class _Expander:
         text = self.render(0, len(self.text), {})
         for name in self.forms:
             text = text.replace(f"\0{name}\0", "".join(self.lines.get(name, [])))
-        return re.sub(r"(?m)^( *)(?:restart|ctrl|pw|filter):\n(?!\1  )", "", text)
+        return re.sub(r"(?m)^( *)(?:restart|ctrl|pw|filter):\n(?!\1 )", "", text)
 
 
 def signed(text: str) -> int:
@@ -165,7 +165,7 @@ def _placed(text: str, tree: Tree, lines: dict) -> list:
     """The edits adding each kind's ``lines`` to its top-level section, or a new one where the
     kinds' order puts it."""
     top = {SECTIONS[s.data]: s for s in tree.children if isinstance(s, Tree) and s.data in SECTIONS}
-    end = re.search(r"(?m)^(?:phrase:\n|init: |song:\n)", text).start()
+    end = re.search(r"(?m)^(?:phrase:\n|init:|song:\n)", text).start()
     edits = []
     for k, kind in enumerate(TOP):
         if kind in top and kind in lines:
@@ -192,7 +192,7 @@ def _template(body: Tree, edits: list) -> tuple[str, str]:
         elif what != "name":
             edits.append((start, end, f"{'+' * (what == 'note')}q{len(values)}"))
             values.append(int(value))
-    return ", ".join(f"q{k}" for k in range(len(values))), ",".join(map(str, values))
+    return ",".join(f"q{k}" for k in range(len(values))), ",".join(map(str, values))
 
 
 def _edited(text: str, start: int, end: int, edits) -> str:
@@ -233,5 +233,5 @@ def templated(text: str) -> str:
         refs = [r for r in refs if r not in inner]
         declared, args = _template(body, inner)
         edits.append((*span, f"t{k}({args})"))
-        lines.setdefault(kind, []).append(f"  t{k}({declared}): {_edited(text, *span, inner)}\n")
+        lines.setdefault(kind, []).append(f" t{k}({declared}):{_edited(text, *span, inner)}\n")
     return printed(read(_edited(text, 0, len(text), edits + refs + _placed(text, tree, lines))))
