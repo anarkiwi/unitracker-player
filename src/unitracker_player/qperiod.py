@@ -135,18 +135,22 @@ class _Finder:
             return None
         arg = node.args[0] if op == "F" else node.slice
         rising = a.d > 0
-        start = self._settle(arg, a, lambda x: x < size if rising else x >= 0)
+        low, high = size
+        start = self._settle(arg, a, lambda x: x < high if rising else x >= low)
         return None if start is None else Sig(start, 1, 0)
 
 
-def _size(ftable, namespace, node) -> int | None:
+def _size(ftable, namespace, node) -> tuple[int, int] | None:
+    """``(low, high)``: the table is 0 below ``low`` and from ``high`` on."""
     if ftable is not None:
-        n = 0
-        while ftable(n):
-            n += 1
-        return n
+        low = high = 0
+        while ftable(high):
+            high += 1
+        while ftable(low - 1):
+            low -= 1
+        return low, high
     table = namespace["_T"].get(node.value.id)
-    return len(table.args[0]) if table is not None else None
+    return (0, len(table.args[0])) if table is not None else None
 
 
 def _periodic(a: Sig, b: Sig) -> Sig | None:

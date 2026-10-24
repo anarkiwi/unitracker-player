@@ -14,6 +14,7 @@ SYMBOLS = {"v": 0, "phi": 2, "nn": 4, "ne": 5}
 STATE = 6
 STACK = 0x100
 TABLES = 0x200
+BELOW = 128
 TOP = 0x10000
 FLAGS = MPU.INTERRUPT
 WRITES = frozenset("sta stx sty inc dec asl lsr rol ror".split())
@@ -68,13 +69,15 @@ class Machine:
     from :data:`STATE` the state of the routine's cell in zero page; each table's ``T.lo`` then
     ``T.hi`` from :data:`TABLES`, each ``max(256, len(T))`` bytes, 0 past the table; then the
     routines' code, the note table ``F`` (``F(k)`` at ``clock_hz`` and ``rounding`` for k
-    0-255) laid out as a table before the first routine that names it. ``image`` is the memory
-    as laid out, what every firing starts from."""
+    0-255, each half after its :data:`BELOW` entries for k -128 to -1) laid out before the
+    first routine that names it. ``below`` is the bytes before each table half, where a
+    negative offset may read. ``image`` is the memory as laid out, what every firing starts
+    from."""
 
     def __init__(self, tables: dict, state: dict, clock_hz: int = PAL_HZ, rounding="round"):
         self.clock_hz, self.rounding = clock_hz, rounding
         self.memory, self.symbols = bytearray(TOP), dict(SYMBOLS)
-        self.cells, self.sizes = {}, {}
+        self.cells, self.sizes, self.below = {}, {}, {}
         for cell, variables in state.items():
             at, names = STATE, {}
             for name, size in variables:
@@ -90,14 +93,16 @@ class Machine:
         self.image = bytearray(self.memory)
         self.mpu = MPU(self.memory, TABLES)
 
-    def _table(self, name: str, values) -> None:
+    def _table(self, name: str, values, below: int = 0) -> None:
         """Lays out table ``name`` at the top: ``name.lo`` then ``name.hi``, each
-        ``max(256, len(values))`` bytes."""
-        span, at = max(256, len(values)), self.top
+        ``max(256, len(values) - below)`` bytes after the ``below`` entries before entry 0, the
+        first ``below`` of ``values``."""
+        span, at = max(256 + below, len(values)), self.top
         if at + 2 * span > TOP:
             raise PlayError(f"{name}: the tables and routines overflow memory")
         for half, shift in (("lo", 0), ("hi", 8)):
-            self.symbols[f"{name}.{half}"] = at
+            symbol = f"{name}.{half}"
+            self.symbols[symbol], self.below[symbol] = at + below, below
             self.memory[at : at + len(values)] = bytes((x >> shift) & 0xFF for x in values)
             at += span
         self.top = at
@@ -130,7 +135,8 @@ class Machine:
             for s in statements
         ):
             start = self.top
-            self._table("F", [frequency(k, self.clock_hz, self.rounding) for k in range(256)])
+            notes = range(-BELOW, 256)
+            self._table("F", [frequency(k, self.clock_hz, self.rounding) for k in notes], BELOW)
             self.image[start : self.top] = self.memory[start : self.top]
         ops, labels, end = self._layout(name, statements, cell)
         code, start = _emit(name, ops, labels, bag, self.top), self.top
@@ -148,9 +154,12 @@ class Machine:
                 continue
             address = None
             if isinstance(s.operand, Mem):
-                address = self.address(s.operand.symbol, cell, name) + s.operand.offset
+                symbol, offset = s.operand.symbol, s.operand.offset
+                address = self.address(symbol, cell, name) + offset
                 if address >= TOP:
-                    raise PlayError(f"{name}: {s.operand.symbol}+{s.operand.offset} is past memory")
+                    raise PlayError(f"{name}: {symbol}{offset:+d} is past memory")
+                if offset < -self.below.get(symbol, 0):
+                    raise PlayError(f"{name}: {symbol}{offset:+d} is before the table")
             opcode, how = _encoding(s.mnemonic, s.mode, address)
             ops.append((s, opcode, how, address))
             pc += _SIZE.get(how, 3)
