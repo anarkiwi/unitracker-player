@@ -62,6 +62,15 @@ which reads no parameter) or, in a command or a slot's default, a quoted
 expression (`!pw:'v + 40'`). An anonymous body is assembled once per text and cell, and binding
 the same text again keeps its phi as the same call does.
 
+A named definition, and a template, may instead be written at its first reference, its name
+(a template's signature) and `=` before its value (a template's body, then its call's arguments):
+`C4.i3={ad: 9}`, `run: c3=[{ctrl: 65}, end]`, `p3=[C4, -*3]+2`, `!pw:walk(s)='v + s'(2)`,
+`ctrl: arp(a, b)=[{ctrl: a, note: +b}, end](7,4)`, `!run:arp(a, b)=ctrl[...](7,4)`. It plays as
+the same definition in its section: the player moves each to its section first
+(`unitracker_grammar.document.top_level`). A section's records are defined for the whole
+document, one at its first use from that use on in reading order; a reference before it and a
+name defined twice are refused when the document is read.
+
 A `restart`, `ctrl`, `pw` or `filter` record may be a program template, keyed by its
 signature (`arp(a, b)`, `hr(h, ad, sr)`, `pt()`): its parameters are distinct lowercase names,
 by the one rule of every signature (none `v`, `phi`, `n`, `nn`, `ne`, `none`, `hold`, `reset`

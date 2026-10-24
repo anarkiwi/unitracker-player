@@ -8,7 +8,8 @@ import ast
 
 from lark import Token, exceptions
 from unitracker_grammar import CanonicalError, parse
-from unitracker_grammar.code import Call, Statements, call, signature
+from unitracker_grammar import document as model
+from unitracker_grammar.code import Call, Statements, call, first_uses, signature
 from unitracker_grammar.expr import Nodes
 
 NONE = None
@@ -581,8 +582,11 @@ def _modulation(kind: str, fields: list, fresh: bool = False):
 
 
 def read(text: str) -> Document:
-    """The Document of canonical document ``text``."""
+    """The Document of canonical document ``text``, its definitions at their first use moved
+    to their sections (:func:`unitracker_grammar.document.top_level`)."""
     tree = parse(text)
+    if next(first_uses(tree), None) is not None:
+        tree = parse(model.printed(model.top_level(model.read(text))))
     try:
         return ToDocument().transform(tree)
     except exceptions.VisitError as exc:
