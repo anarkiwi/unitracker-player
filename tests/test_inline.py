@@ -78,10 +78,7 @@ def test_a_document_with_every_definition_inline_plays_as_its_named_form(name, t
 
 @pytest.mark.parametrize("name", FIXTURES)
 def test_a_lifted_fixture_inlined_plays_as_lifted(name):
-    try:
-        text = lifted(FIXTURES[name])
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        pytest.skip(f"{name}: not lifted here: {exc}")
+    text = lifted(name)
     out = inlined(text)
     assert not _references(out)
     assert np.array_equal(play(out, 600), play(text, 600))
