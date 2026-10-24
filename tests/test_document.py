@@ -17,11 +17,12 @@ def test_the_header_is_read_with_its_values():
     text = doc(head=HEAD, rows=("[p1, p1]",)).replace(
         "meta: {title: T}", "meta: {title: 'It''s', author: \"A \\\"B\\\"\", released: 1987}"
     )
-    header = read(text).header
+    document = read(text)
+    header = document.header
     assert header.meta == {"title": "It's", "author": 'A "B"', "released": "1987"}
     assert (header.cycles_per_tick, header.clock_hz) == (17095, 1022727)
-    assert (header.voices, header.tempo, header.version) == (2, (6, 7), "1.21")
-    assert read(text).tables == {"W": (1, 2, 3)}
+    assert (header.voices, header.tempo, header.slots) == (2, (6, 7), {})
+    assert document.tables == {"W": (1, 2, 3)}
 
 
 @pytest.mark.parametrize(
@@ -41,3 +42,40 @@ def test_other_spellings_are_canonical_errors(old, new):
         read(text)
     with pytest.raises(CanonicalError):
         play(load(text))
+
+
+def _edit(text: str, *pairs) -> str:
+    for old, new in pairs:
+        assert old in text
+        text = text.replace(old, new, 1)
+    return text
+
+
+PW = doc("[C4.i1!run:pw1, -*3]", pw={"pw1": "v + 3"})
+REMOVED = {
+    "version-1.23": _edit(doc(), ("unitracker: 2.0", "unitracker: 1.23")),
+    "version-2.1": _edit(doc(), ("unitracker: 2.0", "unitracker: 2.1")),
+    "hold-line": _edit(doc(), ("voices: 1\n", "voices: 1\nhold: {pw: [step]}\n")),
+    "instance": _edit(doc("[C4.i1!pw:1, -*3]"), ("!pw:1", "!pw:x1")),
+    "set": _edit(doc("[C4.i1!pw:1, -*3]"), ("!pw:1", "!set:pw:1")),
+    "command-filter-none": _edit(doc("[C4.i1!cut:none, -*3]"), ("!cut:none", "!filter:none")),
+    "row-filter-none": _edit(
+        doc(ins="{filter: [{cut: none}, end]}"), ("cut: none", "filter: none")
+    ),
+    "bag": _edit(doc(ins="{pw: v + 1}"), ("pw: v + 1", "pw: up {s: 1}")),
+    "shape": _edit(doc(ins="{pw: v + 1}"), ("pw: v + 1", "mod: ramp {step: 5}")),
+    "name-keyed-template": _edit(doc(mods={"up()": "v + 1"}), ("up(): v + 1", "up: v + 1")),
+    "kind-prefixed-run": _edit(PW, ("!run:pw1", "!run:pw:pw1")),
+    "row-section": _edit(
+        PW,
+        ("pw:\n  pw1: v + 3\n", ""),
+        ("      phrase:", "      pw:\n        pw1: v + 3\n      phrase:"),
+    ),
+}
+
+
+@pytest.mark.parametrize("text", REMOVED.values(), ids=REMOVED.keys())
+def test_removed_constructs_are_canonical_errors(text):
+    """Another version and the spellings format 2.0 dropped are outside the grammar."""
+    with pytest.raises(CanonicalError):
+        read(text)

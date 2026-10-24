@@ -6,7 +6,7 @@ import pytest
 from conftest import FIXTURES, lifted
 from inline import DEFINED, inlined, parser
 from song import doc
-from test_code_play import ADD, TABLE, block, v23
+from test_code_play import ADD, TABLE, block
 from test_sid import SONGS
 from unitracker_grammar.code import CodeError
 
@@ -22,17 +22,16 @@ NAMED = {
             "i2": "{ad: 5, ctrl: [{ctrl: 65, note: +0}, {wait: 2, run: c2}, end], pw: pw2}",
         },
         rows=("[p1]", "[p2-2]", "[p1+3]"),
-        head="tempo: 2\ninit: [C3.i2!pw:x1]\n",
+        head="tempo: 2\ninit: [C3.i2!pw:'v + 40']\n",
         restart={"r1": "[{hold: 1, gate: 0}, {}, end]"},
         ctrl={
             "c1": "[{ctrl: 65, note: +0}, {wait: 1, note: +7, run: pw2}, end]",
             "c2": "[{ctrl: 17}, end]",
         },
-        pw={"pw1": "'v + 3*φ'", "pw2": "[{pw: 800}, {wait: 2, pw: 'v + 9'}, {loop: 1}]"},
-        filter={"f1": "[{cut: 300, res: 9, route: 1, mode: 16, vol: 15}, end]", "f2": "'v + 2'"},
-        x={"x1": "v + 40"},
+        pw={"pw1": "v + 3*φ", "pw2": "[{pw: 800}, {wait: 2, pw: v + 9}, {loop: 1}]"},
+        filter={"f1": "[{cut: 300, res: 9, route: 1, mode: 16, vol: 15}, end]", "f2": "v + 2"},
     ),
-    "calls": v23(
+    "calls": (
         doc(
             "[C4.i1!pw:add(-7)!wob.freq:vib(3,40,6), D4!b.pw:cnt()!cut:walk(30),"
             " -!freq:note(), E5, -*6]",
@@ -98,23 +97,22 @@ def test_an_anonymous_body_keeps_phi_for_the_same_text():
     """Rebinding the same body keeps φ; another text restarts it."""
     phi = "asm{lda phi; sta v; rts}"
     other = "asm{lda phi; sta v; clc; rts}"
-    text = v23(doc(f"[C4.i1!pw:{phi}, -!pw:{phi}, -!pw:{other}, -]", head="tempo: 2\n"))
+    text = doc(f"[C4.i1!pw:{phi}, -!pw:{phi}, -!pw:{other}, -]", head="tempo: 2\n")
     assert play(text)[:, 2].tolist() == [0, 1, 2, 3, 0, 1, 2, 3]
 
 
 @pytest.mark.parametrize(
     "text, error, match",
     [
-        (doc("[C4.i1!pw:asm{rts}]"), PlayError, "code is format 1.23's"),
-        (v23(doc("[C4.i1!pw:asm{lda #c; sta v; rts}]")), PlayError, "reads no parameter"),
+        (doc("[C4.i1!pw:asm{lda #c; sta v; rts}]"), PlayError, "reads no parameter"),
         (
-            v23(doc("[C4.i1!pw:asm{t:; rts}]", head="state: {pw: {t: 1}}\n")),
+            doc("[C4.i1!pw:asm{t:; rts}]", head="state: {pw: {t: 1}}\n"),
             CodeError,
             "label 't' is a symbol",
         ),
-        (v23(doc("[C4.i1!pw:asm{lda u; rts}]")), PlayError, "unknown symbol u"),
+        (doc("[C4.i1!pw:asm{lda u; rts}]"), PlayError, "unknown symbol u"),
     ],
-    ids=["version", "parameter", "label", "symbol"],
+    ids=["parameter", "label", "symbol"],
 )
 def test_anonymous_bodies_the_player_cannot_play_are_refused(text, error, match):
     with pytest.raises(error, match=match):
@@ -123,5 +121,5 @@ def test_anonymous_bodies_the_player_cannot_play_are_refused(text, error, match)
 
 def test_a_command_and_a_slot_s_default_bind_quoted_expressions():
     head = "tempo: 2\nslots: {pw: {a: {mod: 'v + 1'}, b: {}}}\n"
-    text = doc("[C4.i1, -!b.pw:'2*v']", head=head).replace("1.21", "1.22")
+    text = doc("[C4.i1, -!b.pw:'2*v']", head=head)
     assert play(text, 4)[:, 2].tolist() == [1, 2, 6, 14]

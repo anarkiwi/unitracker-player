@@ -1,4 +1,4 @@
-"""Rewrites format 1.23's program templates as text: ``expanded`` names each call's program, one
+"""Rewrites program templates as text: ``expanded`` names each call's program, one
 named record per distinct call with each parameter its argument, the templates dropped;
 ``templated`` makes each named program a template over its literal integers, each reference a
 call passing them."""
@@ -14,18 +14,20 @@ from unitracker_grammar.document import printed, read
 from unitracker_grammar import expr as E
 
 NAMED = {"RESTART": "restart", "CTRL": "ctrl", "PW": "pw", "FILTER": "filter"}
-SIGNED = {f"{k}_SIG": v for k, v in NAMED.items()}
+SIGNED = {"PROGRAM_SIG"}
+SECTIONS = {f"def_{k}": k for k in ("restart", "ins", "ctrl", "pw", "filter")}
 PREFIX = {"restart": "r", "ctrl": "c", "pw": "pw", "filter": "f"}
 INTEGER = {f"row_{k}" for k in "wait hold gate ad sr res mode vol".split()}
 CELLS = ("cell_value", "modulation")
 
 
-def _records(tree: Tree, types: dict):
-    """``(key, body, section)`` of each program record keyed by a token of ``types``."""
-    for node in tree.find_data("section"):
-        for key, body in zip(node.children, node.children[1:]):
-            if isinstance(key, Token) and key.type in types:
-                yield key, body, node
+def _records(tree: Tree, types):
+    """``(key, body, kind)`` of each program record keyed by a token of ``types``."""
+    for node in tree.children:
+        if isinstance(node, Tree) and node.data in SECTIONS:
+            for key, body in zip(node.children[::2], node.children[1::2]):
+                if key.type in types:
+                    yield key, body, SECTIONS[node.data]
 
 
 def _line(key: Token, body: Tree) -> tuple[int, int]:
@@ -75,7 +77,7 @@ class _Expander:
     def __init__(self, text: str):
         self.text, self.tree = text, parser().parse(text)
         self.forms, self.names, self.lines = {}, {}, {}
-        records = _records(self.tree, NAMED | SIGNED)
+        records = list(_records(self.tree, NAMED.keys() | SIGNED))
         aliases = {b.meta.start_pos for _, b, _ in records if isinstance(b.children[0], Token)}
         self.sites = sorted(
             (b, e, "alias" if what == "call" and b in aliases else what, value)
@@ -83,9 +85,9 @@ class _Expander:
         )
         used = [int(m) for m in re.findall(r"\b(?:pw|[cfr])(\d+)\b", text)]
         self.number = itertools.count(max(used, default=0) + 1)
-        for key, body, _ in _records(self.tree, SIGNED):
+        for key, body, kind in _records(self.tree, SIGNED):
             name, declared = C.signature(key)
-            self.forms[name] = SIGNED[key.type], declared, body, _line(key, body)
+            self.forms[name] = kind, declared, body, _line(key, body)
             self.indent = " " * (key.column - 1)
 
     def render(self, start: int, end: int, bag: dict) -> str:
@@ -134,7 +136,6 @@ class _Expander:
         text = self.render(0, len(self.text), {})
         for name in self.forms:
             text = text.replace(f"\0{name}\0", "".join(self.lines.get(name, [])))
-        text = re.sub(r"(run: |!run:)(?:ctrl|pw|filter):", r"\1", text)
         return re.sub(r"(?m)^( *)(?:restart|ctrl|pw|filter):\n(?!\1  )", "", text)
 
 
@@ -162,11 +163,7 @@ def _lifted(tree: Tree):
 def _placed(text: str, tree: Tree, lines: dict) -> list:
     """The edits adding each kind's ``lines`` to its top-level section, or a new one where the
     kinds' order puts it."""
-    top = {
-        (NAMED | SIGNED | {"INS": "ins"})[s.children[0].type]: s
-        for s in tree.children
-        if isinstance(s, Tree) and s.data == "section"
-    }
+    top = {SECTIONS[s.data]: s for s in tree.children if isinstance(s, Tree) and s.data in SECTIONS}
     end = re.search(r"(?m)^(?:init: |song:\n)", text).start()
     edits = []
     for k, kind in enumerate(TOP):
@@ -208,16 +205,14 @@ def _edited(text: str, start: int, end: int, edits) -> str:
 
 
 def _references(tree: Tree, calls: dict) -> list:
-    """The edits making each reference to a named program its template's call, half the runs
-    with the call after its kind."""
-    refs = []
-    for node in tree.iter_subtrees():
-        for child in node.children:
-            if isinstance(child, Token) and child.type in NAMED and node.data != "section":
-                prefixed = node.data == "program_name" and len(refs) % 2
-                kind = f"{NAMED[child.type]}:" if prefixed else ""
-                refs.append((child.start_pos, child.end_pos, kind + calls[str(child)]))
-    return refs
+    """The edits making each reference to a named program its template's call."""
+    return [
+        (child.start_pos, child.end_pos, calls[str(child)])
+        for node in tree.iter_subtrees()
+        if node.data not in SECTIONS
+        for child in node.children
+        if isinstance(child, Token) and child.type in NAMED
+    ]
 
 
 def templated(text: str) -> str:

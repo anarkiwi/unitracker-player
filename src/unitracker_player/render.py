@@ -8,7 +8,6 @@ from tqdm import tqdm
 
 from unitracker_grammar.expr import indexed
 
-from unitracker_player.modulation import SHAPES
 from unitracker_player.compiler import _Compiler, compile_document
 from unitracker_player.player import REGISTERS, Player, PlayError, _Voice
 from unitracker_player.qperiod import period
@@ -63,11 +62,10 @@ class _Periods:
         return found[0] + (phi - found[0]) % found[1]
 
     def mod(self, mod):
-        """A modulator ``[fn, phi, ..., last]`` with its φ and its last firing's reduced."""
+        """A modulator ``[fn, phi, ...]`` with its φ reduced."""
         if mod is None:
             return None
-        last = mod[-1] and (mod[-1][0], self.phi(mod[0], mod[-1][1]))
-        return (id(mod[0]), self.phi(mod[0], mod[1]), *mod[2:-1], last)
+        return (id(mod[0]), self.phi(mod[0], mod[1]), *mod[2:])
 
 
 def _freeze(obj, t: int):
@@ -87,9 +85,6 @@ def _voice(voice: _Voice, t: int, periods: _Periods) -> tuple:
     state["slots"] = [[p, i, due - t if p is not None else 0] for p, i, due in voice.slots]
     for name in ("freq_mods", "pw_mods"):
         state[name] = [periods.mod(m) for m in state[name]]
-    osc = voice.osc
-    if osc is not None and osc[0] is SHAPES["set"]:
-        state["osc"] = [*osc[:2], 0, *osc[3:-1], osc[-1] and (osc[-1][0], 0)]
     return _freeze(state, t)
 
 

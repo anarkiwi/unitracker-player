@@ -8,66 +8,59 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 
 | line | meaning |
 |---|---|
-| `unitracker` | `1.23` and `1.22`, or `1.21` and `1.20` (see [Format 1.21](#format-121)); any other version is refused |
+| `unitracker` | `2.0`; any other version is outside the grammar |
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
 | `tempo` | `n` ticks per step, or `[a, b]`, steps alternating `a` and `b` (default 6); 0 is refused |
-| `hold` | format 1.21's (see [Format 1.21](#format-121)); refused in `1.22` |
-| `slots` | per cell, its modulator slots (see [Slots](#slots)); refused before `1.22` |
-| `order` | the phases of a tick in the order they run (see [Order within a tick](#order-within-a-tick)); refused before `1.22` |
-| `state` | per cell, the state variables code modulators read and write (see [Code modulators](#code-modulators)); refused before `1.23` |
+| `slots` | per cell, its modulator slots (see [Slots](#slots)) |
+| `order` | the phases of a tick in the order they run (see [Order within a tick](#order-within-a-tick)) |
+| `state` | per cell, the state variables code modulators read and write (see [Code modulators](#code-modulators)) |
 | `tables` | the tables expressions read as `T[k]` and code as `T.lo` and `T.hi` |
-| `mod` | format 1.23's templates, each keyed by its signature (see [Definitions](#definitions)); refused before `1.23` |
+| `mod`, `restart`, `ins`, `ctrl`, `pw`, `filter` | the definitions (see [Definitions](#definitions)) |
+| `regs` | the 25 registers before tick 0, `$D400` first (see [Initial state](#initial-state)); a count other than 25 is refused |
 | `init` | one event per voice (see [Init](#init)); a count other than `voices` is refused |
 
 ## Initial state
 
-Every register is 0, every cell (frequency, pulse width, cutoff, `ctrl`, the mask, the gate,
-`ad`, `sr`, `res`, `route`, `mode`, `vol`) is 0, no voice has a note, an instrument or a
+Every register is its `regs` value (0 where the document has no `regs` line), and every cell is
+the value its registers hold (see [Registers](#registers)): a voice's frequency and pulse width
+its words, `ctrl` its `$D404 + 7(i-1)` and the gate that byte's bit 0, `ad` and `sr`; the
+cutoff `$D415 & 7 | $D416 << 3`, `res` and `route` the nibbles of `$D417`, `mode` and `vol`
+those of `$D418`; the mask is 0. The bits the SID lacks (`$D403 + 7(i-1)` bits 4-7, `$D415`
+bits 3-7) read 0 from the first tick on, and a voice the document does not play keeps its
+registers as given. No voice has a note, an instrument or a
 program, every slot is unbound but where it has a default binding (see [Slots](#slots)), and
 every voice's swing is at `a`.
 
 ## Definitions
 
-Every `def` section of every row adds its names to one namespace for the whole song; a name
-defined twice, and a reference to a name never defined, is refused. A `pw` or `filter` record,
-and an instrument's `pw` or `filter` field, that is a binding (see [Bindings](#bindings)) is the
-program `[{pw: b}, end]` or `[{cut: b}, end]`; an instrument's several `pw` or `filter` fields
-are one such row binding each field's slot, and a program among them is refused. A program
+The top-level sections `mod`, `restart`, `ins`, `ctrl`, `pw` and `filter` and every row's
+`phrase` section add their names to one namespace for the whole song; a name defined twice, and
+a reference to a name never defined, is refused. A `pw` or `filter` record, and an instrument's
+`pw` or `filter` field, that is a binding (see [Bindings](#bindings)) is the program
+`[{pw: b}, end]` or `[{cut: b}, end]`; an instrument's several `pw` or `filter` fields are one
+such row binding each field's slot, and a program among them is refused. A program
 `{loop: k}` with `k` outside its rows is refused.
 
-A `mod` record is a template: an expression that may read parameters, lowercase names but `v`,
-`n`, a function's and a record's name (`x1`, `pw1`, `f1`, ...). An `x` record is an instance:
-an expression, or a template's name with the bag `{name: integer, ...}` naming each of its
-parameters and no other, which is the template with each parameter its integer. An expression
-outside a template that reads a parameter is refused. A `mod` record that is a code block is a
-code template (see [Code modulators](#code-modulators)); one is refused before `1.23`.
-
-In `1.23` the templates are the top-level `mod` section's, after `tables` (records at 2 spaces,
-a code block's lines at 4), and each record's key is its signature: `vib(l, c, s)`, or `note()`
-for a template of no parameter. Its parameters are distinct lowercase names, none a code symbol
+A `mod` record is a template, an expression or a code block (see
+[Code modulators](#code-modulators)), keyed by its signature: `vib(l, c, s)`, or `note()` for
+a template of no parameter. Its parameters are distinct lowercase names, none a code symbol
 (`v phi nn ne a x y`) nor a state variable, and exactly the names the body reads as parameters
-(an expression's parameters, a code block's immediate names); the declaration fixes their
-order. An `x` section, a `mod` section in a row's `def`, and a signature or a call before
-`1.23` are refused.
-
-In `1.23` the other definitions that are not song content stand at the top level too, after the
-`mod` section and before `init`: `restart:`, `ins:`, `ctrl:`, `pw:` and `filter:`, each
-optional, in that order, records at 2 spaces, named records and templates mixed. A row's `def`
-keeps only its `phrase` section; a `restart`, `ins`, `ctrl`, `pw` or `filter` section in a
-row's `def` is refused in `1.23`, and a top-level one before it.
+(an expression's lowercase names but `v`, `n` and a function's or a record's name, a code
+block's immediate names); the declaration fixes their order. An expression outside a template
+that reads a parameter is refused.
 
 A definition may stand inline at its one use, and plays as a named definition used only there:
 a program after its kind in a row's `run:` or a `!run:` (`run: pw[{pw: 5}, end]`,
 `!run:ctrl[{ctrl: 64}, end]`), whose slot its kind names; an instrument after an event's note
 (`C4.{ad: 9, sr: 240}`); a phrase with its transpose in a play entry (`[[C4, -*3]+2, ~]`); and,
 wherever a cell is bound, an anonymous code body (`asm{lda v; up:; adc #1; sta v; bne up; rts}`,
-format `1.23`'s, which reads no parameter) or, in a command or a slot's default, a quoted
+which reads no parameter) or, in a command or a slot's default, a quoted
 expression (`!pw:'v + 40'`). An anonymous body is assembled once per text and cell, and binding
 the same text again keeps its φ as the same call does.
 
-In `1.23` a `restart`, `ctrl`, `pw` or `filter` record may be a program template, keyed by its
+A `restart`, `ctrl`, `pw` or `filter` record may be a program template, keyed by its
 signature (`arp(a, b)`, `hr(h, ad, sr)`, `pt()`): its parameters are distinct lowercase names,
 none `v`, `n`, `none`, `hold` nor a record's name, and exactly the names its rows read. A row
 reads a parameter where it takes an integer (`wait`, `hold`, `ctrl`, `gate`, `ad`, `sr`, `res`,
@@ -77,9 +70,8 @@ call's argument (`pw: walk(b)`, `run: pt(b)`); a parameter inside a larger expre
 inline program, in a named program or anywhere outside a template's records is refused. A call,
 `name(1,-2)`, binds a program template wherever a program's name stands: an instrument's `ctrl`,
 `pw`, `filter` and `restart` fields (`ctrl: arp(7,4)`, `restart: hr(2,9,220)`), a `pw` or
-`filter` record (`pw1: pt(40)`), and a row's `run:` and a `!run:`, bare (`run: arp(7,4)`, the
-template's section giving its kind) or after its kind (`run: ctrl:arp(7,4)`,
-`!run:pw:pt(9)`), which must be the template's. The call is exactly the template's program with
+`filter` record (`pw1: pt(40)`), and a row's `run:` and a `!run:` (`run: arp(7,4)`, the
+template's section giving its kind). The call is exactly the template's program with
 each parameter its argument; an argument wider than its field keeps its low bits as a literal
 would, and a negative `wait` or `hold` is refused. In a `pw` or `filter` field a call of a
 modulator template is a binding, as before; a name that is both a program and a modulator
@@ -196,8 +188,9 @@ applies when its slot is next visited at or after that tick; the rows a visit fi
 order, so `hold: 0` runs the next row in the same tick; a visit that would apply one row twice is
 refused.
 
-A row's keys apply in grammar order, a cell's keys in the order written; a key it leaves out
-changes nothing.
+A row's keys apply in grammar order, a cell's keys, which may repeat, in the order written
+(`{pw: hold, pw: 2000}` stops the pulse program and then binds); a key it leaves out changes
+nothing.
 
 | key | meaning |
 |---|---|
@@ -211,6 +204,7 @@ changes nothing.
 | `cut: b`, `slot.cut: b` | binds the cutoff's slot to `b`, reading this voice's notes |
 | `pw: none`, `cut: none`, `freq: none` | see [Stops](#stops) |
 | `pw: hold`, `cut: hold`, `freq: hold` | see [Stops](#stops) |
+| `pw: reset`, `cut: reset`, `freq: reset` | see [Stops](#stops) |
 | `res` | the resonance nibble, `$D417` bits 4-7 |
 | `route: m` | the routing, `$D417` bits 0-3, becomes `m` |
 | `route: +`, `route: + m` | adds this voice's bit (`1 << (voice - 1)`) and `m` |
@@ -218,7 +212,7 @@ changes nothing.
 | `mode` | `$D418` bits 4-7 become the value's bits 4-7 |
 | `freq: b`, `slot.freq: b` | binds the voice's frequency slot to `b`; an integer `n` is `F(N) + n` |
 | `run: c3`, `run: pw2`, `run: f1` | starts that program at this tick in the control, pulse or filter slot |
-| `run: arp(7,4)`, `run: ctrl:arp(7,4)` | starts the call's program (see [Definitions](#definitions)) in its kind's slot |
+| `run: arp(7,4)` | starts the call's program (see [Definitions](#definitions)) in its kind's slot |
 | `vol` | the volume, `$D418` bits 0-3 |
 
 Values wider than their field keep their low bits. In a program template's rows a parameter
@@ -244,19 +238,16 @@ refused. A binding names its modulator:
 
 | binding | modulator |
 |---|---|
-| `x3` | the instance `x3` (before `1.23`) |
-| `note` | the template `note`, which reads no parameter (before `1.23`) |
-| `porta {s: 3}` | the template `porta` with its bag, as an instance (not in a command; before `1.23`) |
-| `vib(0,-4,32)`, `note()` | `1.23`'s call: the template with each declared parameter, in order, its integer argument; a count other than the declared one is refused |
-| `v + 40`, `512` | the expression (not in a command, which takes an integer and an `x` name or a call) |
+| `vib(0,-4,32)`, `note()` | a call: the template with each declared parameter, in order, its integer argument; a count other than the declared one is refused |
+| `512`, `v + 40` | the expression, which names no template (quoted in a command: `!pw:'v + 40'`) |
+| `asm{...}` | the anonymous code body (see [Definitions](#definitions)) |
 
-In `1.23` a binding is a call, an integer or an expression that names no template; a template's
-name, a bag and an `x` name are refused. A slot's default (`slots: {pw: {a: {mod: note()}}}`) is
-a binding as any other.
+A slot's default (`slots: {pw: {a: {mod: note()}}}`) is a binding as any other.
 
 A command or a program row binding a slot to the modulator it is bound to (the same expression
-with the same parameters; in `1.23` the same template with the same arguments) keeps its φ; any other binding, a slot's first and a binding of a
-note's instrument's fields start φ at 0 on that tick. A binding lasts
+with the same parameters, or the same template with the same arguments) keeps its φ; any other
+binding, a slot's first and a binding of a note's instrument's fields start φ at 0 on that
+tick. A binding lasts
 until its slot is bound again or stopped (see [Stops](#stops)). The voice that binds a slot of the
 cutoff is the voice whose notes and events it reads.
 
@@ -308,13 +299,9 @@ firing (the last `rts` among them), a pull or `rts` on an empty stack, a 257th b
 running outside the routine's code. A looping song with a code modulator has no proved loop:
 `unitracker-sid` needs `--ticks` for it.
 
-A shape (`mod:` of an instrument) drives the frequency in place of its slots from the note
-that arms it until a `!freq` binding or a `hold` of `freq`, holding as the first slot.
-
 ## Events
 
-A slot's `hold` and `reset` events, and format 1.21's hold line, name ticks of the voice that
-bound the slot:
+A slot's `hold` and `reset` events name ticks of the voice that bound the slot:
 
 | event | the ticks of a voice it names |
 |---|---|
@@ -331,23 +318,25 @@ row's events are none of these.
 
 ## Commands
 
-A command applies from the step that carries it, after its note, in grammar order.
+A command applies from the step that carries it, after its note, in grammar order, a cell's
+commands in the order written (`!pw:ptab(3)!pw:reset`).
 
 | command | meaning |
 |---|---|
 | `!run:c3`, `!run:pw2`, `!run:f1` | starts that program in the slot its prefix names; refused on a voice that has no instrument yet |
 | `!run:none` | stops the control slot |
-| `!pw:n`, `!pw:xN`, `!slot.pw:...` | binds the pulse width's slot to `n` (a constant) or `xN` |
+| `!pw:b`, `!slot.pw:b` | binds the pulse width's slot to `b`: an integer, a call, an `asm{...}` body or a quoted expression |
 | `!ad:n`, `!sr:n` | the envelope byte |
 | `!ctrl:n` | the control byte, as a row's `ctrl` |
 | `!resfilt:r/m` | `res` becomes `r` and `route` the mask `m` |
 | `!mode:n`, `!vol:n` | as the row keys |
-| `!cut:n`, `!cut:xN`, `!slot.cut:...` | binds the cutoff's slot to `n` or `xN`, reading this voice's notes |
+| `!cut:b`, `!slot.cut:b` | binds the cutoff's slot to `b`, reading this voice's notes |
 | `!pw:none`, `!cut:none`, `!freq:none` | see [Stops](#stops) |
 | `!pw:hold`, `!cut:hold`, `!freq:hold` | see [Stops](#stops) |
+| `!pw:reset`, `!cut:reset`, `!freq:reset` | see [Stops](#stops) |
 | `!tempo:n`, `!tempo:a/b`, `!vtempo:...` | see [Time](#time) |
-| `!freq:n`, `!freq:+n`, `!freq:-n`, `!slot.freq:...` | binds the frequency's slot to `F(N) + n` |
-| `!freq:xN` | ... to `xN` |
+| `!freq:n`, `!freq:+n`, `!freq:-n` | binds the frequency's slot to `F(N) + n` |
+| `!freq:b`, `!slot.freq:b` | ... to `b`, a call, an `asm{...}` body or a quoted expression |
 | `!legato` | see [Notes](#notes) |
 | `!pw`, `!filter` | the note keeps its pulse / filter program (see [Notes](#notes)) |
 | `*k` | the event lasts `k` steps |
@@ -356,46 +345,19 @@ A command's binding lasts as any other (see [Bindings](#bindings)).
 
 ## Stops
 
-Each modulated cell, `freq`, `pw` and `cut`, takes the same two stops, as a row key, as an
-instrument's `none` field and as a command; the cell's program slot is the pulse slot for `pw`,
+Each modulated cell, `freq`, `pw` and `cut`, takes the same three stops, as a row key and as a
+command, `none` also as an instrument's field; the cell's program slot is the pulse slot for `pw`,
 the filter slot for `cut` and none for `freq`.
 
 | stop | meaning |
 |---|---|
 | `none`, `slot.cell: none`, `!slot.cell:none` | ends the binding of the slot (its prefix's, else the first) |
 | `hold`, `!cell:hold` | ends the binding of every slot of the cell and stops the voice's program slot of the cell |
+| `reset`, `slot.cell: reset`, `!slot.cell:reset` | φ of the slot's binding (its prefix's, else the first) is 0 on that tick, whichever voice bound it; the binding, its code state and an unbound slot are untouched. After a binding that keeps φ (the same modulator again) it restarts it: `{pw: ptab(3), pw: reset}` |
 
 After a `hold` the frequency holds: it is not `F(N)` until a note starts an instrument, a `freq`
-slot is bound or a `none` of `freq`; a `hold` of `freq` also ends the instrument's shape. The
-cutoff's stops end its bindings only where this voice bound them, and a filter program a voice
-starts ends the cutoff bindings the other voices' rows made.
-
-## Format 1.21
-
-A `1.21` document has no `slots` line, slot prefix, `mod` record or template binding; its
-`hold` line names, per cell, the events its modulators hold on, `ctrl.freq`, `ctrl.pw` and
-`ctrl.cut` those a control program's row binds and `freq`, `pw` and `cut` every other. Each cell
-has two slots: a program slot, bound by rows and instruments, and a command slot, bound by
-commands. While the command slot is bound it owns the cell, else the program slot does; only
-the owner fires, and an owner on a hold tick takes its last firing again, with that firing's
-`v` and φ and the current `N`, so a closed form of `N` and φ follows a change of `N` and a
-modulator that reads `v` keeps its value. Before its first firing, a frequency modulator bound
-on the tick a note without `!legato` starts takes its value at φ = -1 with the cell's `v`;
-every other keeps its cell's value. Every binding starts φ at 0.
-
-A note that starts an instrument binds the frequency's program slot to the instrument's `freq`,
-or unbinds it, and ends the voice's command bindings, but the pulse width's where it keeps the
-pulse program, and the cutoff's where this voice made it.
-A row's `none` ends the program slot's binding and a command's the command slot's; a row's
-`hold` ends the program slot's and a command's both, each also stopping the voice's program
-slot of the cell. Slot defaults, reset events and the order of slots do not apply.
-
-### Format 1.20
-
-A `1.20` document plays as `1.21` but for two spellings: its `pw: none` and `!pw:none` are
-`1.21`'s `pw: hold` and `!pw:hold`, and its `filter: none` and `!filter:none` `1.21`'s
-`cut: hold` and `!cut:hold`. A `1.21` or `1.22` document's `filter: none` and `!filter:none`
-are refused.
+slot is bound or a `none` of `freq`. The cutoff's `none` and `hold` end its bindings only where
+this voice bound them, and a filter program a voice starts ends the cutoff bindings the other voices' rows made.
 
 ## Order within a tick
 
