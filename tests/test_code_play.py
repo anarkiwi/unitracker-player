@@ -2,7 +2,7 @@
 modulators)."""
 
 import pytest
-from song import cutoff, doc, freq, pulse
+from song import cutoff, doc, freq, pulse, toplevel
 from unitracker_grammar import CanonicalError
 from unitracker_grammar import frequency as F
 from unitracker_grammar.code import CodeError
@@ -52,7 +52,8 @@ def block(src: str, indent: int = 4) -> str:
 
 
 def v23(text: str, version: str = "1.23") -> str:
-    return text.replace("unitracker: 1.21", f"unitracker: {version}", 1)
+    text = text.replace("unitracker: 1.21", f"unitracker: {version}", 1)
+    return toplevel(text) if version == "1.23" else text
 
 
 def test_the_state_line_and_code_templates_are_read():

@@ -125,7 +125,7 @@ def test_an_argument_wider_than_its_field_keeps_its_low_bits():
             [("{pw: b}, {wait: 1,", "{pw: b}, {wait: b,"), ("pt(9)", "pt(-1)")],
             r"program pt\(-1\): -1 ticks",
         ),
-        ([("pw1: pt(40)", "pw1: pu(40)\n        pu(b): pu(b)")], "a program template calls itself"),
+        ([("pw1: pt(40)", "pw1: pu(40)\n  pu(b): pu(b)")], "a program template calls itself"),
     ],
     ids=[
         "arity",
@@ -159,3 +159,14 @@ def test_program_templates_are_format_1_23_s():
         play(doc("[C4.i1!pw:walk(a)]").replace("1.21", "1.22"), 2)
     with pytest.raises(CodeError, match=r"arp\(a, b\): undeclared \[\], unread \['b'\]"):
         play(v23(text.replace("1.22", "1.21").replace("arp(a)", "arp(a, b)")), 2)
+
+
+def test_format_1_23_s_definitions_are_top_level_sections():
+    document = read(PROGS)
+    assert document.at_top == {"restart", "ins", "ctrl", "pw", "filter"}
+    assert document.rows == {"phrase"} and "\n  - def:\n      phrase:\n" in PROGS
+    in_rows = doc().replace("1.21", "1.23")
+    with pytest.raises(PlayError, match="a row's ins: format 1.23 defines"):
+        play(in_rows, 2)
+    with pytest.raises(PlayError, match="top-level ins: format 1.23's"):
+        play(v23(doc()).replace("1.23", "1.22"), 2)

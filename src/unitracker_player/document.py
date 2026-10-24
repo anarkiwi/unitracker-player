@@ -63,6 +63,7 @@ _VALUES = {
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
+TOP = ("restart", "ins", "ctrl", "pw", "filter")
 _KINDS = {"restart", "ins", "ctrl", "pw", "filter", "x", "phrase", "mod"}
 _CELL = {"pw": "pw", "filter": "cut", "cut": "cut", "freq": "freq"}
 
@@ -193,7 +194,8 @@ class Document:
     timeline's rows of play entries with its ending (``loop`` None for ``end``); ``templates``
     the ``mod`` records by name, each an Expr or a Code, ``signatures`` ``{name: parameters}``
     of those keyed by a signature and ``top`` the names of the top-level ``mod`` section's;
-    ``forms`` the program templates, ``{name: (kind, parameters, program)}``."""
+    ``forms`` the program templates, ``{name: (kind, parameters, program)}``; ``rows`` the
+    kinds of the rows' ``def`` sections and ``at_top`` those of the top-level ones but ``mod``."""
 
     header: Header
     tables: dict
@@ -208,6 +210,8 @@ class Document:
     signatures: dict = field(default_factory=dict)
     top: frozenset = frozenset()
     forms: dict = field(default_factory=dict)
+    rows: frozenset = frozenset()
+    at_top: frozenset = frozenset()
 
 
 def _tok(token: Token):
@@ -268,17 +272,20 @@ class ToDocument(Nodes):
         head, defs, timeline = {"tables": {}, "init": None}, {k: {} for k in _KINDS}, []
         for item in _values(children):
             tag = item[0]
+            if tag in TOP:
+                item, tag = ("defs", [item]), "defs"
             if isinstance(item, str):
                 head["version"] = item
-            elif tag in ("row", "mods"):
+            elif tag in ("row", "mods", "defs"):
                 for kind, entries in item[1]:
+                    head.setdefault("rows" if tag == "row" else "at_top", set()).add(kind)
                     for name, value in entries:
                         if name in defs[kind]:
                             raise CanonicalError(f"{name} is defined twice")
                         defs[kind][name] = value
                 if tag == "row":
                     timeline.append(item[2])
-                else:
+                elif tag == "mods":
                     head["top"] = frozenset(signature(n)[0] for n, _ in item[1][0][1])
             else:
                 head[tag] = item[1]
@@ -309,6 +316,8 @@ class ToDocument(Nodes):
             signatures,
             head.pop("top", frozenset()),
             defs["forms"],
+            frozenset(head.pop("rows", ())),
+            frozenset(head.pop("at_top", set()) - {"mod"}),
         )
 
     @staticmethod
