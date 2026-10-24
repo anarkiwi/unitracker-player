@@ -38,6 +38,7 @@ _VALUES = {
     "HOLD_CELL",
     "HOLD_EVENT",
     "CELL",
+    "PHASE",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
@@ -132,7 +133,7 @@ class Play:
 @dataclass(frozen=True)
 class Header:
     """The header lines, with their defaults; ``hold`` is ``{cell: ((event, k), ...)}``,
-    ``slots`` ``{cell: (Slot, ...)}``."""
+    ``slots`` ``{cell: (Slot, ...)}``, ``order`` the phases of a tick or None."""
 
     version: str
     meta: dict = field(default_factory=dict)
@@ -142,6 +143,7 @@ class Header:
     tempo: tuple = (6, 6)
     hold: dict = field(default_factory=dict)
     slots: dict = field(default_factory=dict)
+    order: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -234,6 +236,7 @@ class ToDocument(Nodes):
             head.pop("tempo", (6, 6)),
             head.pop("hold", {}),
             head.pop("slots", {}),
+            head.pop("order", None),
         )
         programs = {**defs["restart"], **defs["ctrl"], **defs["pw"], **defs["filter"]}
         return Document(
@@ -292,6 +295,10 @@ class ToDocument(Nodes):
         return tuple(
             (str(name), int(k or 0)) for name, _, k in (e.partition("-") for e in children)
         )
+
+    @staticmethod
+    def order(children):
+        return ("order", tuple(_values(children)))
 
     @staticmethod
     def slots(children):

@@ -15,6 +15,7 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 | `tempo` | `n` ticks per step, or `[a, b]`, steps alternating `a` and `b` (default 6); 0 is refused |
 | `hold` | format 1.21's (see [Format 1.21](#format-121)); refused in `1.22` |
 | `slots` | per cell, its modulator slots (see [Slots](#slots)); refused before `1.22` |
+| `order` | the phases of a tick in the order they run (see [Order within a tick](#order-within-a-tick)); refused before `1.22` |
 | `tables` | the tables expressions read as `T[k]` |
 | `init` | one event per voice (see [Init](#init)); a count other than `voices` is refused |
 
@@ -313,14 +314,21 @@ are refused.
 
 ## Order within a tick
 
-1. Events: at tick 0 the `init` events in voice order; then, per voice in order, the restart
-   rows due this tick and the voice's events due this tick.
-2. Programs: every voice's control slot, then every pulse slot, then every filter slot, each in
-   voice order. A program started in a slot already visited this tick applies its rows from the
-   next tick.
-3. Modulators: every voice's frequency, then every pulse width, then the cutoff, each its slots
-   in order (a `row` or `row.KEY` event is a control-program row this tick's step 2 applied).
-4. Registers.
+Each tick runs its phases in order, each over the voices in voice order, then writes the
+registers. The phases are:
+
+| phase | what it runs |
+|---|---|
+| `events` | at tick 0 the `init` events; the voice's restart rows due this tick but its read row, then its events due this tick |
+| `ctrl`, `pulse`, `filter` | the voice's control, pulse or filter program slot (see [Programs](#programs)) |
+| `freq`, `pw`, `cut` | the cell's modulator slots in their order (see [Modulators](#modulators)); `cut` once, for the one cutoff |
+| `read` | the read row: a note's restart's first lookahead row, on its tick, the step's read tick (see [Hard restart](#hard-restart)) |
+
+The order is `[events, ctrl, pulse, filter, freq, pw, cut]`, the read row running within
+`events`, unless the document's `order` line names every phase, `read` among them, exactly once;
+any other `order` line is refused. A program or binding a phase starts after its own slot's
+phase has run this tick applies from the next tick, and a `row` or `row.KEY` event is a control
+program row the `ctrl` phase applied before that tick's modulator phase.
 
 ## Registers
 
