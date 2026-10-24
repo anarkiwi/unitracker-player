@@ -5,8 +5,7 @@ import ast
 from dataclasses import dataclass
 
 from unitracker_grammar import PAL_HZ
-from unitracker_grammar.code import Call, check, inline
-from unitracker_grammar.code import params as code_params
+from unitracker_grammar.code import Call, inline
 from unitracker_grammar.expr import bind
 
 from unitracker_player.code import Machine, Routine
@@ -29,7 +28,7 @@ from unitracker_player.sequencer import PlayError
 MAX_VOICES = 3
 REGISTERS = 25
 ENVELOPE = ("ad", "sr", "ctrl")
-CHIP = ("cut", "resfilt", "mode", "vol")
+CHIP = ("cut", "res", "route", "mode", "vol")
 CELLS = ("pw", "cut", "freq")
 CONTROL, PULSE, FILTER = range(3)
 ORDER = ("events", "ctrl", "pulse", "filter", "freq", "pw", "cut")
@@ -317,9 +316,6 @@ class _Compiler:
             return self.call(value, cell)
         if isinstance(value, Code):
             return self.anonymous(value, cell)
-        names = {n.id for n in ast.walk(value.node) if isinstance(n, ast.Name)}
-        if self.doc.templates.keys() & names:
-            raise PlayError(f"{ast.unparse(value.node)}: a template is bound by a call, name(1,-2)")
         return self.fn(value, freq)
 
     def call(self, value: Call, cell: str):
@@ -334,22 +330,20 @@ class _Compiler:
         if not isinstance(template, Code):
             return self.fn(Expr(bind(template.node, bag)), cell == "freq", key)
         if key not in self.memo:
-            head = self.doc.header
-            self.machine = self.machine or Machine(doc.tables, head.state, head.clock_hz or PAL_HZ)
+            self.machine = self.machine or self._machine()
             self.memo[key] = self.machine.compile(value.name, template.statements, bag, cell)
         return self.memo[key]
+
+    def _machine(self) -> Machine:
+        head = self.doc.header
+        return Machine(self.doc.tables, head.state, head.clock_hz or PAL_HZ, head.rounding)
 
     def anonymous(self, value: Code, cell: str) -> Routine:
         """An anonymous code body's routine, memoised by its one text and the cell."""
         text = inline(value.statements)
-        if code_params(value.statements):
-            raise PlayError(f"{text}: an anonymous body reads no parameter")
-        key, head = ("asm", text, cell), self.doc.header
+        key = ("asm", text, cell)
         if key not in self.memo:
-            check(value.statements, {n for names in head.state.values() for n, _ in names})
-            self.machine = self.machine or Machine(
-                self.doc.tables, head.state, head.clock_hz or PAL_HZ
-            )
+            self.machine = self.machine or self._machine()
             self.memo[key] = self.machine.compile(text, value.statements, {}, cell)
         return self.memo[key]
 
@@ -409,7 +403,7 @@ def compile_document(doc: Document, compiler=None) -> Song:
     if not 1 <= head.voices <= MAX_VOICES:
         raise PlayError(f"voices: {head.voices}: the player plays 1 to {MAX_VOICES} voices")
     clock_hz = head.clock_hz or PAL_HZ
-    comp = (compiler or _Compiler)(doc, note_table(clock_hz))
+    comp = (compiler or _Compiler)(doc, note_table(clock_hz, head.rounding))
     for name in doc.programs:
         comp.program(name)
     for name in doc.instruments:

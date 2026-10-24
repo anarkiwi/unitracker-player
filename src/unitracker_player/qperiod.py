@@ -1,12 +1,12 @@
-"""Quasi-periodic subterms of φ: a node of φ alone with ``f(φ + Q) = f(φ) + D`` for every
-``φ >= P0``, found by structure, then verified and minimised on its values; an expression whose
-every φ is inside such subterms with ``D = 0`` is periodic in φ from the largest ``P0``."""
+"""Quasi-periodic subterms of phi: a node of phi alone with ``f(phi + Q) = f(phi) + D`` for every
+``phi >= P0``, found by structure, then verified and minimised on its values; an expression whose
+every phi is inside such subterms with ``D = 0`` is periodic in phi from the largest ``P0``."""
 
 import ast
 import math
 from dataclasses import dataclass
 
-from unitracker_grammar.expr import PHI, compile_expr
+from unitracker_grammar.expr import compile_expr
 
 from unitracker_player.nodes import children as _children
 from unitracker_player.nodes import op as _op
@@ -16,7 +16,7 @@ SEARCH = 1 << 16
 
 @dataclass(frozen=True)
 class Sig:
-    """``f(φ + q) = f(φ) + d`` for ``φ >= p0``."""
+    """``f(phi + q) = f(phi) + d`` for ``phi >= p0``."""
 
     p0: int
     q: int
@@ -24,7 +24,7 @@ class Sig:
 
 
 class _Finder:
-    """Signatures of the φ-only nodes of one expression; ``values(node, n)`` its first
+    """Signatures of the phi-only nodes of one expression; ``values(node, n)`` its first
     ``n`` values, evaluated with Python's semantics."""
 
     def __init__(self, namespace: dict):
@@ -33,7 +33,7 @@ class _Finder:
         self.cache: dict = {}
 
     def values(self, node, n: int) -> list:
-        """The node's values at φ in ``[0, n)``."""
+        """The node's values at phi in ``[0, n)``."""
         held = self.cache.get(id(node))
         if held is None or held[0] is not node:
             held = self.cache[id(node)] = (node, compile_expr(node, self.namespace, zero=True))
@@ -47,7 +47,7 @@ class _Finder:
         return self.sigs[id(node)]
 
     def _settle(self, node, s: Sig, inside) -> int | None:
-        """The first ``φ >= s.p0`` from which ``inside(f(φ))`` is false for good, for a node
+        """The first ``phi >= s.p0`` from which ``inside(f(phi))`` is false for good, for a node
         stepping ``s.d != 0`` per period."""
         if s.p0 + s.q > SEARCH:
             return None
@@ -67,7 +67,7 @@ class _Finder:
         if op == "leaf":
             if isinstance(node, ast.Constant):
                 return Sig(0, 1, 0)
-            return Sig(0, 1, 1) if node.id == PHI else None
+            return Sig(0, 1, 1) if node.id == "phi" else None
         if any(k is None for k in kids):
             return None
         if op in ("+", "-"):
@@ -173,8 +173,8 @@ def _minimise(values: list, s: Sig) -> Sig:
 
 
 def period(node, namespace: dict) -> tuple | None:
-    """``(p0, q)``: ``node`` is the same function of v and N at φ and φ + q for every
-    φ >= p0; None where that is not proved."""
+    """``(p0, q)``: ``node`` is the same function of v and N at phi and phi + q for every
+    phi >= p0; None where that is not proved."""
     finder = _Finder(namespace)
     p0, q = 0, 1
 
@@ -188,7 +188,7 @@ def period(node, namespace: dict) -> tuple | None:
                 p0, q = max(p0, s.p0), math.lcm(q, s.q)
                 return True
         if isinstance(n, ast.Name):
-            return n.id != PHI
+            return n.id != "phi"
         return all(walk(c) for c in _children(n))
 
     return (p0, q) if walk(node) else None

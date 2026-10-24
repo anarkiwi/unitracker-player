@@ -1,4 +1,4 @@
-unitracker: 2.0
+unitracker: 2.1
 meta: {title: Crosseyed, author: Ilija Melentijevic (iLKke), released: 2021 Funkentstört}
 clock: {cycles_per_tick: 19656, clock_hz: 985248}
 tempo: 1
@@ -279,87 +279,73 @@ mod:
 ins:
   i1: {p.freq: pitch()}
 ctrl:
-  c1: [{ctrl: ^8, gate: 0}, end]
-  c2: [{hold: 2, ctrl: 65^0, gate: 1, ad: 0, sr: 246, pw: pul(3,1,0), p.freq: slide(216)}, {ctrl: 17^0,
-      gate: 0, p.freq: slide(216)}, end]
-  c3: [{ctrl: 65^0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0), k2.cut: acid(2,0,16384), res: 15,
-      route: 7, mode: 16}, {k2.cut: acid(8,0,512)}, {ctrl: ^0, gate: 0, note: +0}, {k2.cut: acid(8,0,512)},
+  c1: [{mask: 8, gate: 0}, end]
+  c2: [{hold: 2, ctrl: 65, mask: 0, gate: 1, ad: 0, sr: 246, pw: pul(3,1,0), p.freq: slide(216)}, {ctrl: 17,
+      mask: 0, gate: 0, p.freq: slide(216)}, end]
+  c3: [{ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0), k2.cut: acid(2,0,16384),
+      res: 15, route: 7, mode: 16}, {k2.cut: acid(8,0,512)}, {mask: 0, gate: 0, note: +0}, {k2.cut: acid(8,0,512)},
     {}, {loop: 3}]
-  c4: [{ctrl: ^8, gate: 0}, end]
-  c5: [{hold: 2, ctrl: 81^4, gate: 1, note: +12, ad: 0, sr: 68, pw: pul(3,1,0)}, {ctrl: ^4, gate: 0},
+  c4: [{mask: 8, gate: 0}, end]
+  c5: [{hold: 2, ctrl: 81, mask: 4, gate: 1, note: +12, ad: 0, sr: 68, pw: pul(3,1,0)}, {mask: 4, gate: 0},
     end]
-  c6: [{ctrl: ^8, gate: 0}, end]
-  c7: [{hold: 2, ctrl: 65^0, gate: 1, sr: 243, pw: pul(3,8,0)}, {hold: 3, ctrl: 129^0, gate: 0, note: E4},
-    {}, end]
+  c6: [{mask: 8, gate: 0}, end]
+  c7: [{hold: 2, ctrl: 65, mask: 0, gate: 1, sr: 243, pw: pul(3,8,0)}, {hold: 3, ctrl: 129, mask: 0, gate: 0,
+      note: E4}, {}, end]
   c8: [{k2.cut: acid(2,0,16384), res: 15, route: 7, mode: 16}, {k2.cut: acid(8,0,512)}, {}, {k2.cut: acid(8,0,512)},
     {loop: 2}]
-  c9: [{hold: 2, ctrl: 65^0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0), k2.cut: acid(4,0,2560),
-      mode: 32}, {ctrl: ^0, gate: 0, note: +0}, end]
-  c10: [{ctrl: 65^0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {k2.cut: acid(8,0,512)}, {ctrl: ^0,
-      gate: 0, note: +0}, {k2.cut: acid(8,0,512)}, {}, {loop: 3}]
+  c9: [{hold: 2, ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0), k2.cut: acid(4,0,2560),
+      mode: 32}, {mask: 0, gate: 0, note: +0}, end]
+  c10: [{ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {k2.cut: acid(8,0,512)},
+    {mask: 0, gate: 0, note: +0}, {k2.cut: acid(8,0,512)}, {}, {loop: 3}]
   c11: [{k2.cut: acid(4,0,2560), mode: 32}, end]
-  c12: [{ctrl: 81^4, gate: 1, note: +12, ad: 0, sr: 68, pw: pul(3,1,0)}, {k2.cut: acid(8,0,512)}, {ctrl: ^4,
-      gate: 0}, {k2.cut: acid(8,0,512)}, {}, {loop: 3}]
-  c13: [{hold: 2, ctrl: 65^0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {ctrl: ^0, gate: 0,
+  c12: [{ctrl: 81, mask: 4, gate: 1, note: +12, ad: 0, sr: 68, pw: pul(3,1,0)}, {k2.cut: acid(8,0,512)},
+    {mask: 4, gate: 0}, {k2.cut: acid(8,0,512)}, {}, {loop: 3}]
+  c13: [{hold: 2, ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {mask: 0, gate: 0,
       note: +0}, end]
-  c14: [{ctrl: ^0, gate: 0}, end]
-  c15: [{hold: 2, ctrl: 17^2, gate: 1, note: +24, ad: 0, sr: 249, pw: pul(3,8,0)}, {hold: 2, ctrl: ^2,
-      gate: 0, note: +0}, {hold: 2, note: +12}, {hold: 2, ctrl: ^2, gate: 0, note: +0}, {loop: 2}]
-  c16: [{ctrl: ^8, gate: 0}, {hold: 2, note: +12}, {hold: 2, ctrl: ^2, gate: 0, note: +0}, {loop: 1}]
-  c17: [{ctrl: ^8, gate: 0}, {hold: 2, ctrl: ^2, gate: 0, note: +0}, {hold: 2, note: +12}, {loop: 1}]
-  c18: [{hold: 2, ctrl: 65^0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {ctrl: ^0, gate: 0,
+  c14: [{mask: 0, gate: 0}, end]
+  c15: [{hold: 2, ctrl: 17, mask: 2, gate: 1, note: +24, ad: 0, sr: 249, pw: pul(3,8,0)}, {hold: 2, mask: 2,
+      gate: 0, note: +0}, {hold: 2, note: +12}, {hold: 2, mask: 2, gate: 0, note: +0}, {loop: 2}]
+  c16: [{mask: 8, gate: 0}, {hold: 2, note: +12}, {hold: 2, mask: 2, gate: 0, note: +0}, {loop: 1}]
+  c17: [{mask: 8, gate: 0}, {hold: 2, mask: 2, gate: 0, note: +0}, {hold: 2, note: +12}, {loop: 1}]
+  c18: [{hold: 2, ctrl: 65, mask: 0, gate: 1, note: +0, ad: 1, sr: 152, pw: pul(3,8,0)}, {mask: 0, gate: 0,
       note: +0}, end]
+phrase:
+  p0: [-]
+  p1: [-!p.freq:pitch(), -!run:c1, -*2, C5!run:c2, -*8, -!run:c4, -*2, C5!run:c5, -*8, -!run:c6, -*2,
+    C6!run:c7, -*11, D#5!run:c5, -*11, C5!run:c5, -*8, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4, -*2, C6!run:c7,
+    -*11, F5!run:c5, -*6]
+  p2: [-!p.freq:pitch(), -*3, C4!run:c3, -*23, -!run:c8, -*11, A#3!run:c9, -*23, -!run:c8, -*23, A#3!run:c10,
+    -*6]
+  p3: [-!p.freq:pitch(), -*94]
+  p4: [-*2, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4, -*2, C5!run:c5, -*8, -!run:c6, -*2, C6!run:c7, -*11,
+    D#5!run:c5, -*11, C5!run:c5, -*8, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4, -*2, C6!run:c7, -*11, F5!run:c5,
+    -*6]
+  p5: [-*5, C4!run:c9, -*11, -!run:c11, -*11, -!run:c8, -*11, C4!run:c10, -*11, -!run:c8, -*11, A#4!run:c10,
+    -*11, D#6!run:c12, -*11, A#3!run:c3, -*6]
+  p6: [-*96]
+  p7: [-*5, C4!run:c3, -*23, -!run:c8, -*11, A#3!run:c9, -*23, -!run:c8, -*23, A#3!run:c10, -*6]
+  p8: [-*2, -!run:c1, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
+  p9: [-*5, A#5!run:c15, -*35, D#5!run:c15, -*29, F5!run:c15, -*24]
+  p10: [-*2, -!run:c16, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
+  p11: [-*2, -!run:c17, -*2, G4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*11, F4!run:c18, -*11, F6!run:c15,
+    -*11, C6!run:c18, -*23, A#5!run:c15, -*6]
+  p12: [-*2, -!run:c17, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
 init: [-.i1!pw:pinit(0,256)!ctrl:1!vol:15!st.cut:cinit(1,2,0)!n.freq:nr(0,4455), -.i1!pw:pinit(1,2048)!ctrl:1!n.freq:nr(1,1115),
   -.i1!pw:pinit(2,2048)!ctrl:1!n.freq:nr(2,3971)]
 song:
-  - def:
-      phrase:
-        p0: [-]
-    play: [p0, p0, p0]
-  - def:
-      phrase:
-        p1: [-!p.freq:pitch(), -!run:c1, -*2, C5!run:c2, -*8, -!run:c4, -*2, C5!run:c5, -*8, -!run:c6,
-          -*2, C6!run:c7, -*11, D#5!run:c5, -*11, C5!run:c5, -*8, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4,
-          -*2, C6!run:c7, -*11, F5!run:c5, -*6]
-        p2: [-!p.freq:pitch(), -*3, C4!run:c3, -*23, -!run:c8, -*11, A#3!run:c9, -*23, -!run:c8, -*23,
-          A#3!run:c10, -*6]
-        p3: [-!p.freq:pitch(), -*94]
-    play: [p1, p2, p3]
-  - def:
-      phrase:
-        p4: [-*2, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4, -*2, C5!run:c5, -*8, -!run:c6, -*2, C6!run:c7,
-          -*11, D#5!run:c5, -*11, C5!run:c5, -*8, -!run:c6, -*2, C5!run:c2, -*8, -!run:c4, -*2, C6!run:c7,
-          -*11, F5!run:c5, -*6]
-        p5: [-*5, C4!run:c9, -*11, -!run:c11, -*11, -!run:c8, -*11, C4!run:c10, -*11, -!run:c8, -*11,
-          A#4!run:c10, -*11, D#6!run:c12, -*11, A#3!run:c3, -*6]
-        p6: [-*96]
-    play: [p4, p5, p6]
-  - def:
-      phrase:
-        p7: [-*5, C4!run:c3, -*23, -!run:c8, -*11, A#3!run:c9, -*23, -!run:c8, -*23, A#3!run:c10, -*6]
-    play: [p4, p7, p6]
+  - play: [p0, p0, p0]
+  - play: [p1, p2, p3]
   - play: [p4, p5, p6]
   - play: [p4, p7, p6]
   - play: [p4, p5, p6]
   - play: [p4, p7, p6]
   - play: [p4, p5, p6]
-  - def:
-      phrase:
-        p8: [-*2, -!run:c1, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
-    play: [p4, p7, p8]
-  - def:
-      phrase:
-        p9: [-*5, A#5!run:c15, -*35, D#5!run:c15, -*29, F5!run:c15, -*24]
-    play: [p4, p5, p9]
-  - def:
-      phrase:
-        p10: [-*2, -!run:c16, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
-    play: [p4, p7, p10]
-  - def:
-      phrase:
-        p11: [-*2, -!run:c17, -*2, G4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*11, F4!run:c18, -*11,
-          F6!run:c15, -*11, C6!run:c18, -*23, A#5!run:c15, -*6]
-    play: [p4, p5, p11]
+  - play: [p4, p7, p6]
+  - play: [p4, p5, p6]
+  - play: [p4, p7, p8]
+  - play: [p4, p5, p9]
+  - play: [p4, p7, p10]
+  - play: [p4, p5, p11]
   - play: [p4, p7, p6]
   - play: [p4, p5, p6]
   - play: [p4, p7, p6]
@@ -368,8 +354,5 @@ song:
   - play: [p4, p5, p6]
   - play: [p4, p7, p6]
   - play: [p4, p5, p6]
-  - def:
-      phrase:
-        p12: [-*2, -!run:c17, -*2, F4!run:c13, -*11, -!run:c14, -*11, D#6!run:c15, -*35, C6!run:c15, -*30]
-    play: [p4, p7, p12]
+  - play: [p4, p7, p12]
   - {loop: 10}

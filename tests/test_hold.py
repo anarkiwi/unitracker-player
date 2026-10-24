@@ -1,4 +1,4 @@
-"""Holds: a slot held on its hold events passes its cell's value through and its φ waits
+"""Holds: a slot held on its hold events passes its cell's value through and its phi waits
 (docs/semantics.md, Slots and Modulators)."""
 
 import ast
@@ -9,7 +9,7 @@ from unitracker_grammar import frequency as F
 
 from unitracker_player import Player, load, play
 
-SWEEP = "{ctrl: [{ctrl: 65}, end], pw: 10*φ + 1}"
+SWEEP = "{ctrl: [{ctrl: 65}, end], pw: 10*phi + 1}"
 
 
 def holding(cell: str, events: str) -> str:
@@ -18,7 +18,7 @@ def holding(cell: str, events: str) -> str:
 
 
 def sweep(held: set, ticks: int, start: int = 0) -> list:
-    """``10*φ + 1`` from ``start``, φ advancing on every tick but ``held``, 0 before; a held
+    """``10*phi + 1`` from ``start``, phi advancing on every tick but ``held``, 0 before; a held
     tick before the first firing keeps the pulse width."""
     out, phi, last = [], 0, 0
     for t in range(ticks):
@@ -57,7 +57,7 @@ def test_a_pulse_holds_on_its_events(hold, held):
 def test_a_legato_hold_is_the_tick_its_note_applies():
     """D4 !legato applies on its restart's first-tick row, a tick before its step, and holds
     there."""
-    ins = "{ctrl: [{ctrl: 65}, end], pw: 10*φ + 1, restart: [{hold: 1, gate: 0}, {ctrl: 9}, end]}"
+    ins = "{ctrl: [{ctrl: 65}, end], pw: 10*phi + 1, restart: [{hold: 1, gate: 0}, {ctrl: 9}, end]}"
     text = doc(
         phrase="[C4.i1, D4!legato, -*2]", ins=ins, head="tempo: 3\n" + holding("pw", "legato")
     )
@@ -75,7 +75,7 @@ def test_a_read_is_the_step_less_its_instrument_s_restart_lookahead():
     """The voice reads its step its instrument's lookahead earlier, the instrument it plays before
     the step names another; a voice with no instrument reads nothing."""
     ins = {
-        "i1": "{ctrl: [{ctrl: 65}, end], pw: 10*φ + 1, restart: [{hold: 2, gate: 0}, {}, end]}",
+        "i1": "{ctrl: [{ctrl: 65}, end], pw: 10*phi + 1, restart: [{hold: 2, gate: 0}, {}, end]}",
         "i2": "{ctrl: [{ctrl: 65}, end], restart: [{hold: 1, gate: 0}, {}, end]}",
     }
     text = doc(
@@ -89,7 +89,7 @@ def test_a_control_program_row_holds_on_any_key_but_ctrl_and_gate():
     """A row setting a note is a row event; one setting only ctrl and gate is not, nor is a
     restart's row. The held tick passes the frequency through, at the row's old note."""
     ins = (
-        "{ctrl: [{ctrl: 65}, {gate: 1}, {note: +12}, {ctrl: 64}, end], freq: F(N) + φ,"
+        "{ctrl: [{ctrl: 65}, {gate: 1}, {note: +12}, {ctrl: 64}, end], freq: F(N) + phi,"
         " restart: [{hold: 1, sr: 1}, {}, end]}"
     )
     text = doc(phrase="[C4.i1, -*2]", ins=ins, head="tempo: 3\n" + holding("freq", "row"))
@@ -100,8 +100,8 @@ def test_a_control_program_row_holds_on_any_key_but_ctrl_and_gate():
 @pytest.mark.parametrize(
     "expr, expected",
     [
-        ("F(N) + φ", [F(48), F(48) + 1, F(48) + 1, F(50) + 2]),
-        ("v + 1 + (φ < 1)*F(N)", [F(48) + 1, F(48) + 2, F(48) + 2, F(48) + 3]),
+        ("F(N) + phi", [F(48), F(48) + 1, F(48) + 1, F(50) + 2]),
+        ("v + 1 + (phi < 1)*F(N)", [F(48) + 1, F(48) + 2, F(48) + 2, F(48) + 3]),
     ],
 )
 def test_a_held_frequency_keeps_its_word_through_a_legato_note(expr, expected):
@@ -117,7 +117,10 @@ def test_the_cutoff_holds_on_the_events_of_the_voice_that_set_it():
     head = "voices: 2\ntempo: 2\n" + holding("cut", "step")
     text = doc(
         phrase={"p1": "[C4.i1!vtempo:3*3]", "p2": "[C4.i2, -, -*2]"},
-        ins={"i1": "{ctrl: [{ctrl: 65}, end]}", "i2": "{ctrl: [{ctrl: 65}, end], filter: 8*φ + 8}"},
+        ins={
+            "i1": "{ctrl: [{ctrl: 65}, end]}",
+            "i2": "{ctrl: [{ctrl: 65}, end], filter: 8*phi + 8}",
+        },
         rows=("[p1, p2]",),
         head=head,
     )
@@ -130,7 +133,7 @@ def test_no_hold_events_hold_nothing():
 
 
 def test_a_compiled_expression_carries_its_node():
-    song = load(doc(ins="{ctrl: [{ctrl: 65}, end], pw: 10*φ + 1}"))
+    song = load(doc(ins="{ctrl: [{ctrl: 65}, end], pw: 10*phi + 1}"))
     player = Player(song)
     player.step()
-    assert ast.unparse(player.voices[0].pw_mods[0][0].node) == "10 * φ + 1"
+    assert ast.unparse(player.voices[0].pw_mods[0][0].node) == "10 * phi + 1"

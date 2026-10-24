@@ -12,9 +12,11 @@ from unitracker_grammar.expr import indexed, tree
 Fn = Callable[[int, int, int], int]
 
 
-def note_table(clock_hz: int) -> Callable[[int], int]:
-    """``F(k)`` at ``clock_hz``, cached."""
-    return functools.lru_cache(maxsize=None)(functools.partial(frequency, clock_hz=clock_hz))
+def note_table(clock_hz: int, rounding: str = "round") -> Callable[[int], int]:
+    """``F(k)`` at ``clock_hz`` with ``rounding``, cached."""
+    return functools.lru_cache(maxsize=None)(
+        functools.partial(frequency, clock_hz=clock_hz, rounding=rounding)
+    )
 
 
 def constant(node: ast.expr) -> int | None:

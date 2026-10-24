@@ -5,8 +5,8 @@ import re
 import numpy as np
 from unitracker_grammar.document import printed, read
 
-HEAD = "unitracker: 2.0\nmeta: {title: T}\n"
-TOP = ("mod", "restart", "ins", "ctrl", "pw", "filter")
+HEAD = "unitracker: 2.1\nmeta: {title: T}\n"
+TOP = ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase")
 I1 = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end]}"
 
 
@@ -21,14 +21,15 @@ def doc(
     if "voices: " not in head:
         head = re.sub(r"^((?:clock: .*\n)?)", r"\1voices: 1\n", head)
     defs |= {"mod": mods or {}, "ins": ins if isinstance(ins, dict) else {"i1": ins}}
+    defs["phrase"] = phrase if isinstance(phrase, dict) else {"p1": phrase}
     head = _sections(head, defs)
-    phrases = phrase if isinstance(phrase, dict) else {"p1": phrase}
-    body = "".join(f"        {n}: {v}\n" for n, v in phrases.items())
-    first, *rest = rows
-    tail = "".join(f"  - play: {r}\n" for r in rest)
+    plays = "".join(f"  - play: {r}\n" for r in rows)
     end = "  - end\n" if ending == "end" else f"  - {{loop: {ending}}}\n"
-    text = f"{HEAD}{head}song:\n  - def:\n      phrase:\n{body}    play: {first}\n{tail}{end}"
-    return printed(read(text))
+    text = f"{HEAD}{head}song:\n{plays}{end}"
+    try:
+        return printed(read(text))
+    except ValueError:
+        return text
 
 
 def _sections(head: str, defs: dict) -> str:

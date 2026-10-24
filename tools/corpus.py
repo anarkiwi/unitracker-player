@@ -17,14 +17,12 @@ from tqdm import tqdm
 
 def pytest_configure(config):  # pylint: disable=unused-argument
     """Records every text the canonical parser parses into ``$UNITRACKER_CORPUS``."""
-    from unitracker_grammar import canonical, document  # pylint: disable=import-outside-toplevel
+    from unitracker_grammar import canonical  # pylint: disable=import-outside-toplevel
 
     out = Path(os.environ["UNITRACKER_CORPUS"])
     out.mkdir(parents=True, exist_ok=True)
-    for lark in dict.fromkeys(
-        [canonical.parser(), getattr(document, "_parser", canonical.parser)()]
-    ):
-        lark.parse = _recording(lark.parse, out)
+    lark = canonical.parser()
+    lark.parse = _recording(lark.parse, out)
 
 
 def _recording(parse, out: Path):

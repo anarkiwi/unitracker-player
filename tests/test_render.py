@@ -7,8 +7,8 @@ from song import doc
 from unitracker_player import play, read
 from unitracker_player.render import RenderError, render
 
-PW = "[{ctrl: 65, note: +0, pw: '16*abs(φ % 40 - 20) + 512'}, end]"
-VIB = "[{ctrl: 65, note: +0, freq: 'F(N) + 8*(φ % 6 < 3) - 4'}, end]"
+PW = "[{ctrl: 65, note: +0, pw: '16*abs(phi % 40 - 20) + 512'}, end]"
+VIB = "[{ctrl: 65, note: +0, freq: 'F(N) + 8*(phi % 6 < 3) - 4'}, end]"
 
 
 def test_an_ending_song_renders_to_its_end():
@@ -31,7 +31,7 @@ def test_a_looping_song_repeats_from_its_loop(ctrl, phrase):
 
 
 def test_a_modulator_whose_phase_never_recurs_is_refused():
-    text = doc(phrase="[-]", ins="{ad: 9}", head="init: [-!pw:'φ']\n", ending=0)
+    text = doc(phrase="[-]", ins="{ad: 9}", head="init: [-!pw:'phi']\n", ending=0)
     with pytest.raises(RenderError):
         render(read(text))
 

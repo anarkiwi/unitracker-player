@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from programs import SIGNED, expanded, parser, templated
+from programs import expanded, signed, templated
 from song import doc, pulse, reg
 from test_inline import NAMED
 from test_sid import SONGS
@@ -46,10 +46,6 @@ def _corpus():
     yield "progs-templated", templated(expanded(PROGS))
 
 
-def _signed(text: str) -> int:
-    return sum(1 for _ in parser().parse(text).scan_values(lambda t: t.type in SIGNED))
-
-
 def test_program_templates_are_read_with_their_parameters():
     document = read(PROGS)
     assert {k: v[:2] for k, v in document.forms.items()} == {
@@ -72,7 +68,7 @@ def test_a_document_using_templates_plays_as_its_expansion(name, text):
     """Each call made a named program with each parameter its argument plays the same grid; a
     named document made templates over its literals plays as it did."""
     out = expanded(text)
-    assert _signed(text) and not _signed(out), name
+    assert signed(text) and not signed(out), name
     ticks = 64
     grid = play(text, ticks)
     assert np.array_equal(play(out, ticks), grid)
@@ -91,8 +87,8 @@ def test_a_binding_a_template_makes_keeps_phi_for_the_same_arguments():
     text = doc(
         "[C4.i1!run:pq(100), -!run:pq(100), -!run:pq(200), -]",
         head="tempo: 2\n",
-        mods={"ph(s)": "s + φ"},
-        pw={"pq(b)": "[{pw: ph(b)}, end]"},
+        mods={"ph(s)": "s + phi"},
+        pw={"pq(b)": "ph(b)"},
     )
     assert pulse(play(text))[:8] == [100, 101, 102, 103, 200, 201, 202, 203]
 

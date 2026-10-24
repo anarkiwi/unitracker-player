@@ -36,13 +36,13 @@ def test_a_row_s_repeated_keys_apply_in_the_order_written():
 
 @pytest.mark.parametrize("where", ["command", "row"])
 def test_reset_restarts_phi_and_keeps_the_binding(where):
-    """Binding the same modulator keeps its φ; ``reset`` takes it back to 0 on that tick."""
-    keep = doc("[C4.i1!pw:'100*φ', -!pw:'100*φ', -*2]")
+    """Binding the same modulator keeps its phi; ``reset`` takes it back to 0 on that tick."""
+    keep = doc("[C4.i1!pw:'100*phi', -!pw:'100*phi', -*2]")
     if where == "command":
-        reset = doc("[C4.i1!pw:'100*φ', -!pw:'100*φ'!pw:reset, -*2]")
+        reset = doc("[C4.i1!pw:'100*phi', -!pw:'100*phi'!pw:reset, -*2]")
     else:
         ctrl = "[{ctrl: 65, note: +0}, {wait: 5, pw: reset}, end]"
-        reset = doc("[C4.i1!pw:'100*φ', -*3]", ins=f"{{ad: 9, ctrl: {ctrl}}}")
+        reset = doc("[C4.i1!pw:'100*phi', -*3]", ins=f"{{ad: 9, ctrl: {ctrl}}}")
     assert pulse(play(keep, 12)) == [100 * t for t in range(12)]
     assert pulse(play(reset, 12)) == [100 * (t % 6) for t in range(12)]
 

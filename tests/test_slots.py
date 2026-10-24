@@ -5,8 +5,9 @@ import numpy as np
 import pytest
 from song import cutoff, doc, freq, pulse
 from unitracker_grammar import frequency as F
+from unitracker_grammar.expr import ExpressionError
 
-from unitracker_player import PlayError, play, read
+from unitracker_player import play, read
 from unitracker_player.render import render
 
 CTRL = "{ctrl: [{ctrl: 65}, end]}"
@@ -21,9 +22,9 @@ def test_slots_fire_in_their_declared_order_each_on_the_last_s_value(order, expe
 
 
 def test_a_held_slot_passes_its_value_through_and_keeps_its_phi():
-    """b holds on each step: a's firing passes through it, and b's φ waits."""
+    """b holds on each step: a's firing passes through it, and b's phi waits."""
     text = doc(
-        ins="{pw: v + 1, b.pw: v + 100*φ}",
+        ins="{pw: v + 1, b.pw: v + 100*phi}",
         head="tempo: 3\nslots: {pw: {a: {}, b: {hold: [step]}}}\n",
     )
     assert pulse(play(text, 7)) == [1, 2, 103, 104, 305, 606, 607]
@@ -34,7 +35,9 @@ def test_a_held_slot_passes_its_value_through_and_keeps_its_phi():
     [("step", [1, 11, 21, 1, 11, 21, 1]), ("step-1", [1, 11, 1, 11, 21, 1, 11])],
 )
 def test_a_slot_s_phi_restarts_on_its_reset_events(reset, expected):
-    text = doc(ins="{pw: 10*φ + 1}", head=f"tempo: 3\nslots: {{pw: {{a: {{reset: [{reset}]}}}}}}\n")
+    text = doc(
+        ins="{pw: 10*phi + 1}", head=f"tempo: 3\nslots: {{pw: {{a: {{reset: [{reset}]}}}}}}\n"
+    )
     assert pulse(play(text, 7)) == expected
 
 
@@ -42,13 +45,13 @@ def test_a_slot_s_phi_restarts_on_its_reset_events(reset, expected):
     "event, expected", [("row.note", [1, 11, 1, 11, 21]), ("row", [1, 1, 1, 1, 11])]
 )
 def test_a_row_event_names_rows_that_set_any_key_but_ctrl_and_gate_or_its_key(event, expected):
-    ins = "{ctrl: [{ctrl: 65}, {ad: 5}, {note: +0}, {ad: 6}, end], pw: 10*φ + 1}"
+    ins = "{ctrl: [{ctrl: 65}, {ad: 5}, {note: +0}, {ad: 6}, end], pw: 10*phi + 1}"
     text = doc(ins=ins, head=f"slots: {{pw: {{a: {{reset: [{event}]}}}}}}\n")
     assert pulse(play(text, 5)) == expected
 
 
 def test_row_freq_is_a_row_binding_any_slot_of_freq():
-    ins = "{ctrl: [{ctrl: 65}, {tick.freq: v}, end], freq: 10*φ + 1}"
+    ins = "{ctrl: [{ctrl: 65}, {tick.freq: v}, end], freq: 10*phi + 1}"
     head = "slots: {freq: {wave: {reset: [row.freq]}, tick: {}}}\n"
     assert freq(play(doc(ins=ins, head=head), 4)) == [1, 1, 11, 21]
 
@@ -95,20 +98,21 @@ def test_n_is_the_event_note_on_every_cell():
 
 def test_templates_bind_their_parameters_by_a_call_in_declared_order():
     text = doc(
-        ins="{pw: ramp(100,3), freq: porta(7)}", mods={"porta(s)": "v + s", "ramp(o, s)": "s*φ + o"}
+        ins="{pw: ramp(100,3), freq: porta(7)}",
+        mods={"porta(s)": "v + s", "ramp(o, s)": "s*phi + o"},
     )
     frames = play(text, 3)
     assert pulse(frames) == [100, 103, 106] and freq(frames) == [7, 14, 21]
 
 
 def test_an_expression_outside_a_template_reads_no_parameter():
-    with pytest.raises(PlayError, match="q"):
+    with pytest.raises(ExpressionError, match=r"unbound parameters \['q'\]"):
         play(doc(phrase="[C4.i1!pw:'v + q']", ins=CTRL), 1)
 
 
 def test_binding_the_bound_modulator_keeps_its_phi_and_another_restarts_it():
-    """The same expression, in another command, keeps φ; another expression restarts it."""
-    e10, e20 = "'10*φ + 1'", "'20*φ + 1'"
+    """The same expression, in another command, keeps phi; another expression restarts it."""
+    e10, e20 = "'10*phi + 1'", "'20*phi + 1'"
     phrase = f"[C4.i1!pw:{e10}, -!pw:{e10}, -!pw:{e10}, -!pw:{e20}]"
     text = doc(phrase=phrase, ins=CTRL, head="tempo: 2\n")
     assert pulse(play(text, 8)) == [1, 11, 21, 31, 41, 51, 1, 21]
@@ -117,16 +121,16 @@ def test_binding_the_bound_modulator_keeps_its_phi_and_another_restarts_it():
 @pytest.mark.parametrize(
     "phrase, ins, expected",
     [
-        ("[C4.i1, D4.i2]", "{b.pw: v + 2*φ}", [0, 101, 200, 302]),
+        ("[C4.i1, D4.i2]", "{b.pw: v + 2*phi}", [0, 101, 200, 302]),
         ("[C4.i1, -!b.pw:'v + 7', D4.i2, -]", "{ad: 1}", [0, 101, 207, 307, 407, 507]),
     ],
 )
 def test_a_note_rebinds_its_instrument_s_slots_alone(phrase, ins, expected):
     """A note binds the slots its instrument names; every other binding, a command's too, and
-    its φ run on."""
+    its phi run on."""
     text = doc(
         phrase=phrase,
-        ins={"i1": "{pw: 100*φ, b.pw: v + φ}", "i2": ins},
+        ins={"i1": "{pw: 100*phi, b.pw: v + phi}", "i2": ins},
         head="tempo: 2\nslots: {pw: {a: {}, b: {}}}\n",
     )
     assert pulse(play(text, len(expected))) == expected
@@ -164,9 +168,9 @@ def test_slot_refusals(head, ins, match):
 
 
 def test_a_looping_song_with_slots_repeats_from_its_loop():
-    """The loop proof reduces each slot's φ by its modulator's period."""
+    """The loop proof reduces each slot's phi by its modulator's period."""
     text = doc(
-        phrase="[C4.i1, -!tick.freq:'v + 8*(φ % 6 < 3) - 4', D4.i1, -]",
+        phrase="[C4.i1, -!tick.freq:'v + 8*(phi % 6 < 3) - 4', D4.i1, -]",
         ins="{ctrl: [{ctrl: 65, note: +0}, end], freq: F(N), tick.freq: none}",
         head="tempo: 3\nslots: {freq: {wave: {reset: [row.note]}, tick: {hold: [step-1]}}}\n",
         ending=0,
@@ -184,11 +188,11 @@ def test_a_looping_song_with_slots_repeats_from_its_loop():
 
 @pytest.mark.parametrize(
     "ins, cell",
-    [("{pw: 10*φ + 1}", "pw"), ("{ctrl: [{ctrl: 65}, end], freq: 10*φ + 1}", "freq")],
+    [("{pw: 10*phi + 1}", "pw"), ("{ctrl: [{ctrl: 65}, end], freq: 10*phi + 1}", "freq")],
 )
 def test_a_note_s_instrument_binding_restarts_phi_on_the_bound_modulator(ins, cell):
     """Two notes of one instrument: the second restarts the walk its instrument binds, where a
     command binding the same expression runs on."""
-    text = doc(phrase=f"[C4.i1, C4.i1, -!{cell}:'10*φ + 1', -]", ins=ins, head="tempo: 2\n")
+    text = doc(phrase=f"[C4.i1, C4.i1, -!{cell}:'10*phi + 1', -]", ins=ins, head="tempo: 2\n")
     walk = [1, 11, 1, 11, 21, 31, 41, 51]
     assert (pulse if cell == "pw" else freq)(play(text, 8)) == walk

@@ -15,13 +15,13 @@ plays the registers of [the player](semantics.md) on a C64, tick for tick.
 ### The loop proof
 
 A looping song repeats from tick `L` with period `P` when the player's state at `L + P` equals
-its state at `L`, every tick made relative. Modulators keep counting φ across passes, so each
-modulator's φ is first reduced by its expression's period in φ (`qperiod.py`). A φ-only subterm
-has `f(φ + Q) = f(φ) + D` from `φ >= P0`. The rules are: constants and φ; sums; products with a
+its state at `L`, every tick made relative. Modulators keep counting phi across passes, so each
+modulator's phi is first reduced by its expression's period in phi (`qperiod.py`). A phi-only subterm
+has `f(phi + Q) = f(phi) + D` from `phi >= P0`. The rules are: constants and phi; sums; products with a
 constant or of periodic terms; `//` and `%` by a constant; and comparisons, `abs`, `min`, `max`,
 `F` and tables, which settle once their argument's step carries it past every crossing. Each
-signature is checked and minimised on its values. An expression whose every φ lies in subterms
-with `D = 0` is periodic in φ from the largest `P0`. A song whose state does not recur in 1024
+signature is checked and minimised on its values. An expression whose every phi lies in subterms
+with `D = 0` is periodic in phi from the largest `P0`. A song whose state does not recur in 1024
 passes is refused; `--ticks N` builds `N` ticks instead.
 
 ### Cells
