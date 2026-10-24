@@ -17,8 +17,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      # unitracker-grammar 0.11.0 from its cleanup branch until it is released
-      - run: pip install "unitracker-grammar @ git+https://github.com/anarkiwi/unitracker-grammar@cleanup"
       - run: pip install ".[dev]"
       - uses: anarkiwi/pysidtracker/.github/actions/cache@v0.30.0
         with:
