@@ -2,14 +2,14 @@
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import ast
 
 from lark import Token, exceptions
-from unitracker_grammar import CanonicalError, parse
-from unitracker_grammar import document as model
-from unitracker_grammar.code import Call, Statements, call, first_uses, signature
+from unitracker_grammar import CanonicalError
+from unitracker_grammar.code import Call, Statements, call, signature
+from unitracker_grammar.expand import core
 from unitracker_grammar.expr import Nodes
 
 NONE = None
@@ -45,9 +45,11 @@ _VALUES = {
     "PROGRAM_KIND",
     "PARAM",
     "REL_PARAM",
+    "GLOBAL_CELL",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
+_HEADER = ("rounding", "voices", "tempo", "slots", "order", "state", "regs", "lag", "global_cells")
 KINDS = ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase")
 _CELL = {"pw": "pw", "filter": "cut", "cut": "cut", "freq": "freq"}
 
@@ -83,6 +85,13 @@ class Code:
 
 
 @dataclass(frozen=True)
+class Once:
+    """A binding that fires once, then leaves its slot unbound."""
+
+    value: object
+
+
+@dataclass(frozen=True)
 class Slot:
     """A cell's modulator slot: its name, its default binding (a name or a Call), and the
     ``((event, k), ...)`` it holds and resets on."""
@@ -105,11 +114,13 @@ class Row:
 @dataclass(frozen=True)
 class Program:
     """Rows in the order they run, then ``end`` (``loop`` None) or ``{loop:k}``; ``fresh``
-    for an instrument's binding fields, whose bindings restart phi."""
+    for an instrument's binding fields, whose bindings restart phi; ``binding`` for a pulse or
+    filter record that is one binding."""
 
     rows: tuple
     loop: int | None = None
     fresh: bool = False
+    binding: bool = False
 
 
 @dataclass(frozen=True)
@@ -154,7 +165,8 @@ class Play:
 class Header:
     """The header lines, with their defaults; ``slots`` ``{cell: (Slot, ...)}``, ``order`` the
     phases of a tick or None, ``state`` ``{cell: ((name, size), ...)}``, ``regs`` the registers
-    before tick 0 or None, ``rounding`` the note table's, ``round`` or ``floor``."""
+    before tick 0 or None, ``rounding`` the note table's, ``round`` or ``floor``, ``lag`` the
+    ticks the registers are written late and ``global_cells`` the cells the song owns."""
 
     meta: dict = field(default_factory=dict)
     cycles_per_tick: int | None = None
@@ -166,6 +178,8 @@ class Header:
     state: dict = field(default_factory=dict)
     regs: tuple | None = None
     rounding: str = "round"
+    lag: int = 0
+    global_cells: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -274,16 +288,10 @@ class ToDocument(Nodes):
                 timeline.append(value)
             else:
                 head[tag] = value
+        clock = head.pop("clock", (None, None))
+        head.update(zip(("rounding",), clock[2:]))
         header = Header(
-            head.pop("meta"),
-            *(clock := head.pop("clock", (None, None)))[:2],
-            head.pop("voices", 3),
-            head.pop("tempo", (6, 6)),
-            head.pop("slots", {}),
-            head.pop("order", None),
-            head.pop("state", {}),
-            head.pop("regs", None),
-            *clock[2:],
+            head.pop("meta"), *clock[:2], **{k: head.pop(k) for k in _HEADER if k in head}
         )
         return Document(
             header,
@@ -369,6 +377,18 @@ class ToDocument(Nodes):
         return ("regs", children[0])
 
     @staticmethod
+    def lag(children):
+        return ("lag", _values(children)[0])
+
+    @staticmethod
+    def global_cells(children):
+        return ("global_cells", tuple(_values(children)))
+
+    @staticmethod
+    def once(children):
+        return Once(_values(children)[0])
+
+    @staticmethod
     def tables(children):
         values = _values(children)
         return ("tables", dict(zip(values[::2], values[1::2])))
@@ -382,8 +402,12 @@ class ToDocument(Nodes):
         return ("init", tuple(_values(children)))
 
     @staticmethod
-    def row(children):
+    def item(children):
         return ("row", _values(children)[0])
+
+    @staticmethod
+    def row(children):
+        return _values(children)[0]
 
     @staticmethod
     def ending(children):
@@ -407,14 +431,11 @@ class ToDocument(Nodes):
 
     @staticmethod
     def def_pw(children):
-        return ("pw", [(n, _modulation("pw", [("pw", v)])) for n, v in _paired(children)])
+        return ("pw", [(n, _record("pw", v)) for n, v in _paired(children)])
 
     @staticmethod
     def def_filter(children):
-        return (
-            "filter",
-            [(n, _modulation("filter", [("filter", v)])) for n, v in _paired(children)],
-        )
+        return ("filter", [(n, _record("filter", v)) for n, v in _paired(children)])
 
     @staticmethod
     def instrument(children):
@@ -566,6 +587,12 @@ def _program(value) -> bool:
     return isinstance(value, (Program, str))
 
 
+def _record(kind: str, value):
+    """A pulse or filter record: a program, or a binding as the one-row program binding it."""
+    out = _modulation(kind, [(kind, value)])
+    return replace(out, binding=True) if out is not value and isinstance(out, Program) else out
+
+
 def _modulation(kind: str, fields: list, fresh: bool = False):
     """A pulse or filter modulation's ``(key, value)`` fields as one program: a program or its
     name, unprefixed and alone, is itself, as is a call there, which the compiler resolves to a
@@ -582,11 +609,9 @@ def _modulation(kind: str, fields: list, fresh: bool = False):
 
 
 def read(text: str) -> Document:
-    """The Document of canonical document ``text``, its definitions at their first use moved
-    to their sections (:func:`unitracker_grammar.document.top_level`)."""
-    tree = parse(text)
-    if next(first_uses(tree), None) is not None:
-        tree = parse(model.printed(model.top_level(model.read(text))))
+    """The Document of canonical document ``text``'s core
+    (:func:`unitracker_grammar.expand.core`)."""
+    tree = core(text)
     try:
         return ToDocument().transform(tree)
     except exceptions.VisitError as exc:

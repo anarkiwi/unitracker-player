@@ -5,8 +5,8 @@ import re
 import numpy as np
 from unitracker_grammar.document import printed, read
 
-HEAD = "unitracker:2.2\nmeta:{title:T}\n"
-TOP = ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase")
+HEAD = "unitracker:2.3\nmeta:{title:T}\n"
+TOP = ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase", "section")
 I1 = "{ad:9,sr:240,ctrl:[{ctrl:65,note:+0},end]}"
 
 
@@ -16,20 +16,25 @@ def doc(
 ) -> str:
     """A parseable document: ``phrase`` and ``ins`` are p1 and i1 or a dict of names, ``mods``
     the mod section's templates by signature, ``defs`` the other top-level sections by kind,
-    ``rows`` the play entries of each row, ``ending`` end or a loop row; one voice unless
-    ``head`` says otherwise; in its one canonical text."""
+    ``rows`` each song item (a row by its play entries), ``ending`` end or a loop item; one
+    voice unless ``head`` says otherwise; in its one canonical text."""
     if "voices:" not in head:
         head = re.sub(r"^((?:clock:.*\n)?)", r"\1voices:1\n", head)
     defs |= {"mod": mods or {}, "ins": ins if isinstance(ins, dict) else {"i1": ins}}
     defs["phrase"] = phrase if isinstance(phrase, dict) else {"p1": phrase}
     head = _sections(head, defs)
-    plays = "".join(f" - play:{r}\n" for r in rows)
+    plays = "".join(f" - {_item(r)}\n" for r in rows)
     end = " - end\n" if ending == "end" else f" - {{loop:{ending}}}\n"
     text = f"{HEAD}{head}song:\n{plays}{end}"
     try:
         return printed(read(text))
     except ValueError:
         return text
+
+
+def _item(item: str) -> str:
+    """A song item: play entries ``[...]`` as their row, any other item as written."""
+    return f"play:{item}" if item.startswith("[") and not item.startswith("[play:") else item
 
 
 def _sections(head: str, defs: dict) -> str:

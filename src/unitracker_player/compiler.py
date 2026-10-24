@@ -5,8 +5,9 @@ import ast
 from dataclasses import dataclass
 
 from unitracker_grammar import PAL_HZ
-from unitracker_grammar.code import Call, inline
-from unitracker_grammar.expr import bind
+from unitracker_grammar.code import Call, inline, signature
+from unitracker_grammar.expr import bind, tree
+from unitracker_grammar.prelude import PRELUDE
 
 from unitracker_player.code import Machine, Routine
 from unitracker_player.document import (
@@ -15,6 +16,7 @@ from unitracker_player.document import (
     Code,
     Document,
     Expr,
+    Once,
     Param,
     Program,
     Row,
@@ -37,6 +39,9 @@ SLOT_PHASES = {"ctrl": CONTROL, "pulse": PULSE, "filter": FILTER}
 FREQ_MASK, PW_MASK, CUT_MASK = 0xFFFF, 0xFFF, 0x7FF
 KIND_CELL = {"pw": "pw", "filter": "cut"}
 ROW_KEYS = frozenset("ctrl gate note ad sr pw cut res route mode freq run vol".split())
+PRELUDE_TEMPLATES = {
+    (sig := signature(key))[0]: (sig[1], Expr(tree(text))) for key, text in PRELUDE.items()
+}
 
 
 @dataclass(eq=False)
@@ -81,11 +86,10 @@ class CEvent:
 
 @dataclass(frozen=True)
 class Song:  # pylint: disable=too-many-instance-attributes
-    """A document compiled for playing; ``slots`` is ``{cell: slot names}``; ``marks``
-    ``{mark: events}`` for each ``hold slot.cell`` and ``reset slot.cell``, ``rows`` their row
-    events; ``defaults`` ``{cell: ((slot, fn), ...)}``;
-    ``order`` the phases of a tick; ``state`` ``{cell: bytes of its state}``, ``code``
-    whether a code modulator plays and ``regs`` the registers before tick 0."""
+    """A document compiled for playing: ``slots`` ``{cell: slot names}``, ``marks`` ``{mark:
+    events}`` per ``hold``/``reset slot.cell``, ``rows`` their row events, ``defaults`` ``{cell:
+    ((slot, fn, once), ...)}``, ``state`` ``{cell: bytes}``, ``code`` whether code plays, ``regs``
+    the registers before tick 0, ``lag`` the ticks they are late, ``shared`` the song's cells."""
 
     voices: int
     tempo: tuple
@@ -104,6 +108,8 @@ class Song:  # pylint: disable=too-many-instance-attributes
     state: dict
     code: bool
     regs: tuple
+    lag: int = 0
+    shared: tuple = ()
 
 
 def _tempo(value, where: str) -> tuple:
@@ -190,14 +196,16 @@ class _Compiler:
             return None
         if isinstance(ref, Call):
             return self.form(ref, kind, fresh)
-        key = ("program", ref if isinstance(ref, str) else id(ref))
+        source = self.named("program", self.doc.programs, ref) if isinstance(ref, str) else ref
+        fresh = fresh and (isinstance(source, Call) or source.binding)
+        key = ("program", ref if isinstance(ref, str) else id(ref), fresh)
         if key not in self.memo:
-            source = self.named("program", self.doc.programs, ref) if isinstance(ref, str) else ref
             if isinstance(source, Call):
-                self.memo[key] = self.program(source, _kind(ref))
+                self.memo[key] = self.program(source, _kind(ref), fresh)
                 return self.memo[key]
             out = self.memo[key] = CProgram()
             self._fill(out, source, ref)
+            out.fresh = out.fresh or fresh
         return self.memo[key]
 
     def form(self, ref: Call, kind: str | None, fresh: bool) -> CProgram:
@@ -264,9 +272,9 @@ class _Compiler:
         return tuple(out)
 
     def cell(self, key: str, value) -> tuple:
-        """A modulated cell's key (``cell`` or ``slot.cell``) and value as ``(cell, (slot, fn))``,
-        or for a stop ``(cell, (stop, the slots it acts on))``: ``none`` and ``reset`` its slot,
-        ``hold`` every slot of the cell."""
+        """A modulated cell's key (``cell`` or ``slot.cell``) and value as ``(cell, (slot, fn,
+        once))``, or for a stop ``(cell, (stop, the slots it acts on))``: ``none`` and ``reset``
+        its slot, ``hold`` every slot of the cell."""
         name, _, cell = key.rpartition(".")
         names = self.slots[cell]
         if name and name not in names:
@@ -276,7 +284,8 @@ class _Compiler:
             return cell, (value, (slot,))
         if value == HOLD:
             return cell, (HOLD, tuple(range(len(names))))
-        return cell, (slot, self.expression(value, cell))
+        once = isinstance(value, Once)
+        return cell, (slot, self.expression(value.value if once else value, cell), once)
 
     def restart(self, ref) -> tuple | None:
         prog = self.program(ref, "restart")
@@ -322,8 +331,11 @@ class _Compiler:
         """The modulator of a call: its template with each declared parameter its argument,
         memoised by the template, the cell and the arguments."""
         doc = self.doc
-        template = self.named("modulator", doc.templates, value.name)
-        declared = doc.signatures[value.name]
+        if value.name not in doc.templates and value.name in PRELUDE_TEMPLATES:
+            declared, template = PRELUDE_TEMPLATES[value.name]
+        else:
+            template = self.named("modulator", doc.templates, value.name)
+            declared = doc.signatures[value.name]
         if len(declared) != len(value.args):
             raise PlayError(f"{value}: {value.name} takes {len(declared)} argument(s)")
         bag, key = dict(zip(declared, value.args)), ("call", value, cell)
@@ -350,7 +362,9 @@ class _Compiler:
     def defaults(self) -> dict:
         """``{cell: ((slot, fn), ...)}`` of the slots' default bindings."""
         return {
-            cell: tuple((k, self.expression(s.mod, cell)) for k, s in enumerate(slots) if s.mod)
+            cell: tuple(
+                (k, self.expression(s.mod, cell), False) for k, s in enumerate(slots) if s.mod
+            )
             for cell, slots in self.slotted.items()
         }
 
@@ -443,6 +457,8 @@ def compile_document(doc: Document, compiler=None) -> Song:
         {cell: sum(size for _, size in names) for cell, names in head.state.items()},
         comp.machine is not None,
         _regs(head.regs),
+        head.lag,
+        head.global_cells,
     )
 
 
