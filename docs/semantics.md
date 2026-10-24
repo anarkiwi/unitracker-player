@@ -52,6 +52,15 @@ for a template of no parameter. Its parameters are distinct lowercase names, non
 order. An `x` section, a `mod` section in a row's `def`, and a signature or a call before
 `1.23` are refused.
 
+A definition may stand inline at its one use, and plays as a named definition used only there:
+a program after its kind in a row's `run:` or a `!run:` (`run: pw[{pw: 5}, end]`,
+`!run:ctrl[{ctrl: 64}, end]`), whose slot its kind names; an instrument after an event's note
+(`C4.{ad: 9, sr: 240}`); a phrase with its transpose in a play entry (`[[C4, -*3]+2, ~]`); and,
+wherever a cell is bound, an anonymous code body (`asm{lda v; up:; adc #1; sta v; bne up; rts}`,
+format `1.23`'s, which reads no parameter) or, in a command or a slot's default, a quoted
+expression (`!pw:'v + 40'`). An anonymous body is assembled once per text and cell, and binding
+the same text again keeps its φ as the same call does.
+
 ## Time
 
 A tick is one frame. Each voice has its own tempo `(a, b)` and swing phase: a step of the voice

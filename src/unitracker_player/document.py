@@ -43,6 +43,7 @@ _VALUES = {
     "PHASE",
     "SIGNATURE",
     "CALL",
+    "PROGRAM_KIND",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
@@ -67,7 +68,8 @@ class Expr:
 
 @dataclass(frozen=True)
 class Code:
-    """A code template: its statements (:mod:`unitracker_grammar.code`)."""
+    """A code template, or as a binding an anonymous code body: its statements
+    (:mod:`unitracker_grammar.code`)."""
 
     statements: tuple
 
@@ -121,8 +123,8 @@ class Instrument:
 
 @dataclass(frozen=True)
 class Event:
-    """An event atom: its note atom, instrument name, commands in vocabulary order, keep flags
-    and steps."""
+    """An event atom: its note atom, instrument (a name or an inline Instrument), commands in
+    vocabulary order, keep flags and steps."""
 
     note: str
     ins: str | None = None
@@ -134,10 +136,11 @@ class Event:
 
 @dataclass(frozen=True)
 class Play:
-    """A play entry: ``phrase`` (a name and a transpose), ``cont`` (``~``) or ``end``."""
+    """A play entry: ``phrase`` (a name or an inline phrase's events, and a transpose), ``cont``
+    (``~``) or ``end``."""
 
     kind: str
-    phrase: str | None = None
+    phrase: str | tuple | None = None
     transpose: int = 0
 
 
@@ -501,6 +504,11 @@ class ToDocument(Nodes):
         return _values(children)[0]
 
     @staticmethod
+    def run_program(children):
+        """An inline program after its kind, ``(kind, Program)``."""
+        return tuple(_values(children))
+
+    @staticmethod
     def phrase(children):
         return tuple(_values(children))
 
@@ -508,7 +516,7 @@ class ToDocument(Nodes):
     def event(children):
         values = _values(children)
         note, rest = values[0], values[1:]
-        ins = rest.pop(0) if rest and isinstance(rest[0], str) else None
+        ins = rest.pop(0) if rest and isinstance(rest[0], (str, Instrument)) else None
         commands, keep_pw, keep_filter = rest[0], rest[1], rest[2]
         steps = rest[3] if len(rest) > 3 else 1
         return Event(note, ins, tuple(commands.items()), keep_pw, keep_filter, steps)
@@ -536,6 +544,7 @@ class ToDocument(Nodes):
     def code(self, children):
         return Code(Statements.code(self, children))
 
+    asm = code
     code_label, code_op = Statements.code_label, Statements.code_op
     code_imm, code_mem = Statements.code_imm, Statements.code_mem
 
@@ -567,7 +576,7 @@ def _slot_link(key):
     def method(_self, children):
         own = [c for c in children if not isinstance(c, dict)]
         rest = next((c for c in children if isinstance(c, dict)), {})
-        if own and key == "mod":
+        if own and key == "mod" and isinstance(own[0], Token):
             own[0] = call(own[0]) if own[0].type == "CALL" else str(own[0])
         return {key: own[0], **rest} if own else rest
 

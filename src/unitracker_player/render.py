@@ -9,14 +9,8 @@ from tqdm import tqdm
 from unitracker_grammar.expr import indexed
 
 from unitracker_player.modulation import SHAPES
-from unitracker_player.player import (
-    REGISTERS,
-    Player,
-    PlayError,
-    _Compiler,
-    _Voice,
-    compile_document,
-)
+from unitracker_player.compiler import _Compiler, compile_document
+from unitracker_player.player import REGISTERS, Player, PlayError, _Voice
 from unitracker_player.qperiod import period
 
 PASSES = 1024

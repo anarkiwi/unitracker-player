@@ -29,7 +29,9 @@ player.regs                       # the register file the last tick wrote, one s
 Format 1.23's code templates run as 6502 routines on a [jennings](https://pypi.org/project/jennings/)
 MPU, with per-voice state from the document's `state` line; its templates, in a top-level `mod`
 section keyed by signatures (`vib(c, s): |`), are bound by calls (`wob.freq: vib(3,40)`), and
-code reads the note table as `F.lo` / `F.hi`.
+code reads the note table as `F.lo` / `F.hi`. Any definition may also stand inline at its one use
+(`C4.{ad: 9}`, `run: pw[{pw: 5}, end]`, `play: [[C4, -*3]+2]`, `!pw:asm{lda phi; sta v; rts}`,
+`!pw:'v + 40'`) and plays as its named form.
 
 `read(text)` returns the document as plain dataclasses. A text outside the grammar raises
 `unitracker_grammar.CanonicalError`; a document the player refuses raises `PlayError`.
