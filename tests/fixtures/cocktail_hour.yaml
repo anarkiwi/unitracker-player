@@ -1,0 +1,456 @@
+unitracker: 1.23
+meta: {title: Cocktail Hour, author: Esteban Trujillo (et1999cc), released: 2023 Hokuto Force}
+clock: {cycles_per_tick: 19656, clock_hz: 985000}
+tempo: 6
+slots: {freq: {wave: {reset: [row.note, row.freq]}, tick: {hold: [note-1, row]}}, pw: {pulse: {hold: [note-1]}}}
+order: [events, ctrl, pulse, filter, freq, pw, cut, read]
+state: {freq: {t: 1, m: 1}, pw: {r: 1, q: 1}}
+tables:
+  PL: [0, 136, 255, 134, 24, 24, 255, 141, 32, 32, 255, 133, 255, 128, 255]
+  PR: [0, 0, 0, 0, 48, 208, 4, 128, 192, 64, 8, 192]
+mod:
+  ptab(b): |
+    lda phi
+    ora phi+1
+    bne go
+    sta q
+    lda #b
+    sta r
+    go:
+    ldx r
+    beq done
+    lda PL.lo,x
+    cmp #255
+    bne row
+    lda PR.lo,x
+    sta r
+    beq done
+    tax
+    row:
+    ldy q
+    bne mod
+    lda PL.lo,x
+    bpl time
+    sta v+1
+    lda PR.lo,x
+    sta v
+    inc r
+    done:
+    rts
+    time:
+    tay
+    mod:
+    dey
+    sty q
+    bne keep
+    inc r
+    keep:
+    ldy #0
+    lda PR.lo,x
+    bpl pos
+    dey
+    pos:
+    clc
+    adc v
+    sta v
+    tya
+    adc v+1
+    sta v+1
+    rts
+  note(): |
+    lda phi
+    ora phi+1
+    bne done
+    sta t
+    lda nn
+    and #127
+    sta m
+    tay
+    lda F.lo,y
+    sta v
+    lda F.hi,y
+    sta v+1
+    done:
+    rts
+  vib(l, c, s): |
+    lda phi+1
+    bne go
+    lda phi
+    cmp #l
+    bcs go
+    rts
+    go:
+    lda t
+    bmi up
+    cmp #c
+    beq up
+    bcc up
+    eor #255
+    up:
+    clc
+    adc #2
+    sta t
+    lsr
+    bcs dn
+    lda v
+    adc #s
+    sta v
+    lda v+1
+    adc #0
+    sta v+1
+    rts
+    dn:
+    lda v
+    sbc #s
+    sta v
+    lda v+1
+    sbc #0
+    sta v+1
+    rts
+  tporta(s): |
+    lda ne
+    and #127
+    tay
+    sec
+    lda v
+    sbc F.lo,y
+    tax
+    lda v+1
+    sbc F.hi,y
+    bcc up
+    bne dn
+    txa
+    beq done
+    dn:
+    lda v
+    sbc #<s
+    sta v
+    lda v+1
+    sbc #>s
+    sta v+1
+    lda v
+    cmp F.lo,y
+    lda v+1
+    sbc F.hi,y
+    bcs done
+    snap:
+    lda F.lo,y
+    sta v
+    lda F.hi,y
+    sta v+1
+    lda ne
+    sta m
+    lda #0
+    sta t
+    done:
+    rts
+    up:
+    lda v
+    adc #<s
+    sta v
+    lda v+1
+    adc #>s
+    sta v+1
+    lda F.lo,y
+    cmp v
+    lda F.hi,y
+    sbc v+1
+    bcc snap
+    rts
+  vibn(l, k, c): |
+    lda phi+1
+    bne go
+    lda phi
+    cmp #l
+    bcs go
+    rts
+    go:
+    lda m
+    and #127
+    tax
+    clc
+    adc #1
+    and #127
+    tay
+    sec
+    lda F.lo,y
+    sbc F.lo,x
+    sta phi
+    lda F.hi,y
+    sbc F.hi,x
+    sta phi+1
+    ldx #k
+    beq sped
+    shift:
+    lsr phi+1
+    ror phi
+    dex
+    bne shift
+    sped:
+    lda t
+    bmi up
+    cmp #c
+    beq up
+    bcc up
+    eor #255
+    up:
+    clc
+    adc #2
+    sta t
+    lsr
+    bcs dn
+    lda v
+    adc phi
+    sta v
+    lda v+1
+    adc phi+1
+    sta v+1
+    rts
+    dn:
+    lda v
+    sbc phi
+    sta v
+    lda v+1
+    sbc phi+1
+    sta v+1
+    rts
+  porta(g, s): |
+    sta t
+    lda #g
+    bmi dn
+    clc
+    lda v
+    adc #<s
+    sta v
+    lda v+1
+    adc #>s
+    sta v+1
+    rts
+    dn:
+    sec
+    lda v
+    sbc #<s
+    sta v
+    lda v+1
+    sbc #>s
+    sta v+1
+    rts
+  snap(): |
+    sta t
+    lda ne
+    sta m
+    and #127
+    tay
+    lda F.lo,y
+    sta v
+    lda F.hi,y
+    sta v+1
+    rts
+ins:
+  i1: {ad: 0, sr: 245, ctrl: c1, pw: ptab(1), filter: f1, wave.freq: note(), tick.freq: none, restart: [
+      {hold: 2, gate: 0, ad: 255, sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 245, run: c2}, {}, end]}
+  i3: {ad: 0, sr: 231, ctrl: c3, pw: ptab(3), filter: f2, wave.freq: note(), tick.freq: none, restart: [
+      {hold: 2, gate: 0, ad: 255, sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 231, run: c2}, {}, end]}
+  i4: {ad: 32, sr: 213, ctrl: c4, pw: ptab(7), filter: f3, wave.freq: note(), tick.freq: none, restart: [
+      {hold: 2, gate: 0, ad: 255, sr: 255}, {ctrl: 15, gate: 1, ad: 32, sr: 213, run: c2}, {}, end]}
+  i5: {ad: 0, sr: 184, ctrl: c11, pw: ptab(11), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
+        gate: 0, ad: 255, sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 184, run: c2}, {}, end]}
+  i2: {ad: 0, sr: 246, ctrl: c12, pw: ptab(1), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
+        gate: 0, ad: 255, sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 246, run: c2}, {}, end]}
+  i6: {ad: 0, sr: 120, ctrl: c13, pw: ptab(13), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
+        gate: 0, ad: 255, sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 120, run: c2}, {}, end]}
+  i10: {ad: 0, sr: 201, ctrl: c14, pw: ptab(1), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
+        gate: 0, ad: 255, sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 201, run: c2}, {}, end]}
+  i11: {ad: 0, sr: 90, ctrl: c15, pw: ptab(13), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
+        gate: 0, ad: 255, sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 90, run: c2}, {}, end]}
+  i7: {ad: 0, sr: 199, ctrl: c16, wave.freq: note(), tick.freq: none, restart: [{hold: 2, gate: 0, ad: 255,
+        sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 199, run: c2}, {}, end]}
+  i8: {ad: 0, sr: 199, ctrl: c17, wave.freq: note(), tick.freq: none, restart: [{hold: 2, gate: 0, ad: 255,
+        sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 199, run: c2}, {}, end]}
+  i9: {ad: 0, sr: 199, ctrl: c18, wave.freq: note(), tick.freq: none, restart: [{hold: 2, gate: 0, ad: 255,
+        sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 199, run: c2}, {}, end]}
+  i12: {ad: 0, sr: 122, ctrl: c20, pw: ptab(13), wave.freq: note(), tick.freq: none, restart: [{hold: 2,
+        gate: 0, ad: 255, sr: 255}, {ctrl: 9, gate: 1, ad: 0, sr: 122, run: c2}, {}, end]}
+ctrl:
+  c1: [{ctrl: 129, note: C6}, {ctrl: 65, note: E3}, {ctrl: 65, note: G#2}, {ctrl: 65, note: A1}, {ctrl: 64,
+      note: E1}, end]
+  c2: [end]
+  c3: [{ctrl: 65, note: +0}, end]
+  c4: [{ctrl: 65, note: +0}, {note: +3}, {note: +7}, {loop: 0}]
+  c5: [{ctrl: 65, note: +0}, {note: +3}, {note: +8}, {loop: 0}]
+  c6: [{ctrl: 65, note: +0}, {note: +3}, {note: +6}, {loop: 0}]
+  c7: [{ctrl: 65, note: +0}, {note: +3}, {note: +5}, {loop: 0}]
+  c8: [{ctrl: 65, note: +0}, {note: +6}, {note: +9}, {loop: 0}]
+  c9: [{ctrl: 65, note: +0}, {note: +4}, {note: +9}, {loop: 0}]
+  c10: [{ctrl: 65, note: +0}, {note: +5}, {note: +9}, {loop: 0}]
+  c11: [{ctrl: 81, note: +12}, {ctrl: 81, note: +0}, end]
+  c12: [{ctrl: 129, note: B7}, {ctrl: 65, note: A#3}, {ctrl: 64, note: A3}, {ctrl: 128, note: A7}, end]
+  c13: [{ctrl: 129, note: B7}, {ctrl: 81, note: +12}, {ctrl: 81, note: +0}, end]
+  c14: [{ctrl: 65, note: +13}, {ctrl: 64, note: -1}, {ctrl: 64, note: -2}, {ctrl: 64, note: -3}, {ctrl: 64,
+      note: -4}, {ctrl: 64, note: -5}, {ctrl: 64, note: -6}, {ctrl: 64, note: -7}, {ctrl: 64, note: -8},
+    {ctrl: 64, note: -9}, {ctrl: 64, note: -10}, {ctrl: 64, note: -11}, {ctrl: 64, note: -12}, end]
+  c15: [{ctrl: 87, note: +0}, end]
+  c16: [{ctrl: 33, note: +3}, {wait: 1, note: +3}, {wait: 1, note: +0}, {loop: 1}]
+  c17: [{ctrl: 33, note: +4}, {wait: 1, note: +4}, {wait: 1, note: +0}, {loop: 1}]
+  c18: [{ctrl: 33, note: +5}, {wait: 1, note: +5}, {wait: 1, note: +0}, {loop: 1}]
+  c19: [{ctrl: 33, note: +0}, end]
+  c20: [{ctrl: 21, note: +0}, end]
+filter:
+  f1: [{cut: 768, res: 15, route: 1, mode: 96}, {cut: 40, res: 15, route: 1, mode: 48}, {cut: 16}, {cut: 8},
+    {cut: v}, end]
+  f2: [{cut: 64, res: 1, route: 1, mode: 48}, {cut: v}, end]
+  f3: [{cut: 128, res: 15, route: 1, mode: 96}, {cut: v}, end]
+init: [-.i1!vol:15!tempo:2, -.i1, -.i1]
+song:
+  - def:
+      phrase:
+        p0: [-, -!tempo:6]
+        p1: [C3.i1!tempo:3, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4,
+          off, C3.i1, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1,
+          -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -, G2.i3,
+          -, E4.i4, off, G2.i3, -, C3.i1, -, E4.i4, off, D2.i3, -, E4.i4, off]
+        p2: [C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -, E4.i4!run:c5,
+          off, C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -,
+          E4.i4!run:c5, off, C3.i1, -, B1.i3, -, F#4.i4!run:c6, off, B1.i3, -, C3.i1, -, F#4.i4!run:c6,
+          off, B2.i3, -, F#4.i4!run:c6, off, C3.i1, -, B1.i3, -, F#4.i4!run:c7, off, B1.i3, -, C3.i1,
+          -, F#4.i4!run:c7, off, D2.i3, -, F#4.i4!run:c7, off]
+        p3: [C3.i1, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1,
+          -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1, -, E2.i3,
+          -, D4.i4!run:c8, off, E2.i3, -, C3.i1, -, D4.i4!run:c8, off, E3.i3, -, D4.i4!run:c8, off, C3.i1,
+          -, G2.i3, -, D4.i4!run:c8, off, G2.i3, -, C3.i1, -, D4.i4!run:c8, off, D2.i3, -, E4.i4, off]
+        p4: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
+          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, C2.i3,
+          -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3, -, E4.i4,
+          off, D2.i3, -, C3.i1, -, E4.i4, off, D#2.i3, -, E4.i4, off]
+        p5: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
+          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, C2.i3,
+          -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, B1.i3, -, E4.i4,
+          off, B1.i3, -, C3.i1, -, E4.i4, off, B2.i3, -, E4.i4, off]
+        p6: [C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -, E4.i4!run:c5,
+          off, C3.i1, -, A1.i3, -, E4.i4!run:c5, off, A1.i3, -, C3.i1, -, E4.i4!run:c5, off, A2.i3, -,
+          E4.i4!run:c5, off, C3.i1, -, B1.i3, -, D4.i4!run:c9, off, B1.i3, -, C3.i1, -, D4.i4!run:c9,
+          off, B2.i3, -, D4.i4!run:c9, off, C3.i1, -, B1.i3, -, D4.i4!run:c9, off, B1.i3, -, C3.i1, -,
+          D4.i4!run:c9, off, D2.i3, -, D4.i4!run:c9, off]
+        p7: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
+          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3,
+          -, D4.i4!run:c9, off, D2.i3, -, C3.i1, -, D4.i4!run:c9, off, D3.i3, -, D4.i4!run:c9, off, C3.i1,
+          -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off]
+        p8: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
+          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3,
+          -, D4.i4!run:c9, off, D2.i3, -, C3.i1, -, D4.i4!run:c9, off, D3.i3, -, D4.i4!run:c9, off, C3.i1,
+          -, G2.i3, -, D4.i4!run:c10, off, G2.i3, -, C3.i1, -, D4.i4!run:c10, off, D2.i3, -, D4.i4!run:c10,
+          off]
+        p9: [C3.i1, -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1,
+          -, C2.i3, -, E4.i4, off, C2.i3, -, C3.i1, -, E4.i4, off, C3.i3, -, E4.i4, off, C3.i1, -, D2.i3,
+          -, off, -, D2, -, off, -*3, D3, -, off, -, C3.i1, -, B1.i3, -, off, -, B1, -, off, -*3, B2,
+          -, off, -]
+        p10: [C3.i1!tempo:3, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4,
+          off, C3.i1, -, E2.i3, -, E4.i4, off, E2.i3, -, C3.i1, -, E4.i4, off, E3.i3, -, E4.i4, off, C3.i1,
+          -*7, C3, -*7, C3, -*7, C3, -*7]
+        p11: [E1.i3!sr:236, -*7, off!tick.freq:vib(0,4,16), -*55]
+        p12: [-!tick.freq:none, -*3]
+        p13: [-*64]
+        p14: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3),
+          -*5, A4, -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, A4, -, -!sr:40,
+          -, -!tick.freq:vibn(0,2,3), -*23, A4, -*3, A#4, -, -!sr:40, -]
+        p15: [B4.i5, -*3, -!tick.freq:vibn(0,2,3), -*3, A4, -, -!sr:40, -*5, G4, -, -!tick.freq:vibn(0,2,3),
+          -*3, F#4, -, -!sr:40, -*3, G4, -, -!sr:40, -*3, G4, -, F#4, -, -!sr:40, -, E4, -, -!tick.freq:vibn(0,2,3),
+          -, D4, -, -!sr:40, -, E4, -, -!tick.freq:vibn(0,2,3), -, G4, -, -!sr:40, -, A4, -, -!tick.freq:vibn(0,2,3),
+          -, B4, -*3]
+        p16: [C5.i5, -*3, -!tick.freq:vibn(0,2,3), -*7, C#5, -, -!sr:40, -, D5, -, -!tick.freq:vibn(0,2,3),
+          -*3, B4, -, -!sr:40, -*3, A4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3), -*15, B4, -, -!tick.freq:vibn(0,2,3),
+          -, A4, -, -!sr:40, -, G4, -, -!tick.freq:vibn(0,2,3), -, A4, -, -!sr:40, -]
+        p17: [B4.i5, -, -!tick.freq:vibn(0,2,3), -, A4, -, off, -, B4!sr:88, -, -!tick.freq:vibn(0,2,3),
+          -, A4!sr:88, -, off, -, B4!sr:56, -, -!tick.freq:vibn(0,2,3), -, A4!sr:56, -, off, -, B4!sr:24,
+          -, -!tick.freq:vibn(0,2,3), -, A4!sr:24, -, off, -, C3.i2, -, C3, -, C3, -*3, C3, -*3, C3, -,
+          C3, -*3, C3, -*3, C3, -, C3, -, C3, -, C3, -, C3, -]
+        p18: [D4.i6, -, E4, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, A4, -, D4, -, E4, -, G4,
+          -, C3.i2, -, E4.i6, -, G4, -, E4, -, D4, -, E4, -, G4, -, E4, -, C3.i2, -, E4.i6, -, G4, -,
+          E4, -, A4, -, E4, -, A4, -, B4, -, C3.i2, -, A4.i6, -, G4, -, C3.i2, -]
+        p19: [D4.i6, -, E4, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, A4, -, D4, -, E4, -, G4,
+          -, C3.i2, -, E4.i6, -, G4, -, E4, -, D4, -, E4, -, G4, -, E4, -, C3.i2, -, E4.i6, -, G4, -,
+          E4, -, A4, -, E4, -, A4, -, B4, -, C3.i2, -, C3, -, C3, -, C3, -]
+        p20: [C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, C3.i2, -, D4.i6, -,
+          E4, -, G4, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2,
+          -, E4.i6, -, G4, -, E4, -, C3.i2, -, C3, -, A4.i6, -, C3.i2, -, C3, -, A4.i6, -, G4, -, C3.i2,
+          -]
+        p21: [C3.i2, -, E4.i6, -, G4, -, E4, -, C3.i2, -, D4.i6, -, E4, -, D4, -, C3.i2, -, D4.i6, -,
+          E4, -, G4, -, C3.i2, -, E4.i6, -, C3.i2, -, E4.i6, -, C3.i2, -, C3, -*3, C3, -*3, C3, -, C3,
+          -, C3, -, B3.i10, -, B3, -*3, G3, -*3, G3, -, D#3, -, D#3, -]
+        p22: [B5.i11!tick.freq:porta(-1,144), -*11, B5!tick.freq:porta(-1,144), -*7, B5!tick.freq:porta(-1,144),
+          -*5, B5!tick.freq:porta(-1,144), -*5, B5!tick.freq:porta(-1,144), -*23, B5!tick.freq:porta(-1,144),
+          -*7]
+        p23: [-*12, B5.i11!tick.freq:porta(-1,144), -*7, B5!tick.freq:porta(-1,144), -*5, B5!tick.freq:porta(-1,144),
+          -*5, B5!tick.freq:porta(-1,144), -*31]
+        p24: [C3.i10, -, C3, -*3, G2!sr:169, -, G2!sr:169, -*3, D2!sr:137, -, D2!sr:137, -*3, C2!sr:89,
+          -, C2!sr:89, -*43]
+        p25: [-*55, C3.i2, -*8]
+        p26: [-*58, C3.i2, -, C3, -, C3, -]
+        p27: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
+          -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
+          -, F#4.i7, -, -!sr:71, -*3, E4, -*5, -!run:c19, -!tick.freq:porta(-1,160), -*2]
+        p28: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
+          -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
+          -, F#4.i7, -*3, G4.i8, -, -!sr:71, -, F#4.i7, -*3, D4.i8, -, -!sr:71, -]
+        p29: [E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, A3, -, B3, -, -!sr:71, -, B3, -, A3, -, -!sr:71,
+          -, B3, -*3, D4.i8, -, -!sr:71, -, E4.i7, -*3, D4.i8, -, -!sr:71, -, B3.i9, -*3, D4.i8, -, -!sr:71,
+          -, F#4.i7, -, -!sr:71, -*3, E4, -*5, F#4, -, -!sr:71, -]
+        p30: [F#4.i7, -*3, G4.i8, -, -!sr:71, -, F#4.i7!sr:151, -*3, G4.i8!sr:151, -, -!sr:55, -, F#4.i7!sr:87,
+          -*3, G4.i8!sr:87, -, -!sr:39, -, F#4.i7, -*3, E4, -, -!sr:71, -, E4, -*5, D4.i8, -, -!sr:71,
+          -*3, B3.i9, -, -!sr:71, -, D4.i8, -*3, B3.i9, -, -!sr:71, -, A3, -*3, B3, -, -!sr:71, -]
+        p31: [C1.i12!tick.freq:porta(1,152), -*63]
+        p32: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3),
+          -*5, A4, -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, C#5, D5!tick.freq:snap()!legato,
+          -!sr:40, -!tick.freq:none, -*4, B4, -, -!sr:40, -*5, A4, -, -!sr:40, -*5, G4, -, -!sr:40, -,
+          A4, -, -!tick.freq:vibn(0,2,3), -, G4, -, -!sr:40, -]
+        p33: [B4.i5, -*3, -!tick.freq:vibn(0,2,3), -*3, A4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3), -*3,
+          G4, -, -!tick.freq:vibn(0,2,3), -*3, F#4, -, -!sr:40, -*3, E4, -, -!sr:40, -, -!tick.freq:vibn(0,2,3),
+          -*9, D4, -, E4, -, D4, -, G4, -, F#4, -, G4, -, F#4, -, A4, -, G4, -, A4, -, G4, -]
+        p34: [B4.i5, C5!tick.freq:tporta(144)!legato, -*3, -!tick.freq:none, -!tick.freq:vibn(0,2,3),
+          -*5, A4, -, -!sr:40, -, B4, -, -!tick.freq:vibn(0,2,3), -*3, G4, -, -!sr:40, -*3, E5, -, -!sr:40,
+          -*5, D5, -, -!sr:40, -*5, B4, -, -!sr:40, -*5, A4, -, -!sr:40, -*5, G4, -, -!sr:40, -]
+        p35: [F#4.i7!tempo:3, -*3, G4.i8, -, -!sr:71, -, F#4.i7!sr:151, -*3, G4.i8!sr:151, -, -!sr:55,
+          -, F#4.i7!sr:87, -*3, G4.i8!sr:87, -, -!sr:39, -, F#4.i7, -*3, E4, -, -!sr:71, -, E4!tempo:3/4,
+          -*5, D4.i8, -, -!tempo:4, -!sr:71, -*2, B3.i9, -, -!sr:71, -, D4.i8, -*3, B3.i9, -, -!sr:71,
+          -, A3, -*3, F#3, -, -!sr:71, -]
+        p36: [B3.i9!sr:203, -*7, off, -*55]
+    play: [p0, p0, p0]
+  - play: [p1, p13, p13]
+  - play: [p1, p13, p13]
+  - play: [p1, p13, p13]
+  - play: [p1, p13, p13]
+  - play: [p2, p14, p13]
+  - play: [p3, p15, p13]
+  - play: [p2, p16, p13]
+  - play: [p1, p17, p25]
+  - play: [p1, p18, p13]
+  - play: [p4, p18, p13]
+  - play: [p1, p18, p13]
+  - play: [p5, p18, p26]
+  - play: [p6, p18, p27]
+  - play: [p5, p18, p28]
+  - play: [p6, p18, p29]
+  - play: [p7, p19, p30]
+  - play: [p6, p20, p27]
+  - play: [p8, p20, p28]
+  - play: [p6, p20, p29]
+  - play: [p9, p21, p30]
+  - play: [p1, p22, p31]
+  - play: [p1, p22, p31]
+  - play: [p1, p22, p31]
+  - play: [p1, p22, p31]
+  - play: [p2, p22, p32]
+  - play: [p3, p22, p33]
+  - play: [p2, p22, p34]
+  - play: [p10, p23, p17]
+  - play: [p6, p18, p27]
+  - play: [p5, p18, p28]
+  - play: [p6, p18, p29]
+  - play: [p7, p19, p30]
+  - play: [p6, p20, p27]
+  - play: [p8, p20, p28]
+  - play: [p6, p20, p29]
+  - play: [p9, p21, p35]
+  - play: [p11, p24, p36]
+  - play: [p12, p12, p12]
+  - {loop: 38}

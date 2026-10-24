@@ -12,6 +12,7 @@ from unitracker_player import mos, read, sid
 from unitracker_player.render import render
 
 PAL_FRAME = 19656
+FIXTURE_TICKS = 1000
 ARP = "[{ctrl: 65, note: +0, pw: '16*abs(φ % 40 - 20) + 512'}, {wait: 1, note: +4}, {loop: 1}]"
 FILT = "[{cut: 'v + 9', res: 15, route: 7, mode: 16, vol: 15}, end]"
 SONGS = {
@@ -55,14 +56,14 @@ def test_the_playroutine_plays_the_rendered_frames(tmp_path, name):
 @pytest.mark.usefixtures("toolchain")
 @pytest.mark.parametrize("name", FIXTURES)
 def test_a_fixture_plays_on_the_6502_and_on_the_oracle(tmp_path, name):
-    text = lifted(FIXTURES[name])
-    rendered = render(read(text))
+    text = lifted(name)
+    rendered = render(read(text), FIXTURE_TICKS)
     frames, expected, cycles = _simulated(tmp_path, rendered)
     assert np.array_equal(frames, expected)
     assert cycles.max() < PAL_FRAME // 2
     survey = pytest.importorskip("pysidtracker.survey")
     testing = pytest.importorskip("pysidtracker.testing")
-    data = sid.build(text)
+    data = sid.build(text, FIXTURE_TICKS)
     n = len(rendered.frames)
     _, grid, _ = survey.file_oracle(data, 1, n, work=testing.default_cache("csv"))
     assert np.array_equal(np.asarray(grid)[:n], rendered.frames)
