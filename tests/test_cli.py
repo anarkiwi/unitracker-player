@@ -63,7 +63,7 @@ def test_sid_writes_a_psid(song, tmp_path, capsys):
 def test_sid_refuses_a_song_it_cannot_play(tmp_path):
     """A document the player refuses is a usage error."""
     path = tmp_path / "bad.yaml"
-    path.write_text(doc().replace("1.21", "1.19"), encoding="utf-8")
+    path.write_text(doc().replace("unitracker: 2.0", "unitracker: 1.19"), encoding="utf-8")
     with pytest.raises(SystemExit) as exc:
         sid_main([str(path)])
     assert exc.value.code == 2

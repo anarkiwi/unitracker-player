@@ -1,6 +1,5 @@
 """The player's register state per tick, derived by hand from docs/semantics.md."""
 
-import numpy as np
 import pytest
 from song import I1, cutoff, doc, freq, pulse, reg, timeline
 from unitracker_grammar import frequency as F
@@ -127,10 +126,10 @@ def test_the_init_row_applies_before_the_first_step(init, address, expected):
 
 
 def test_an_init_command_modulator_lasts_until_a_note_starts_an_instrument():
-    """`!pw:x1` from init fires from tick 0 and ends at the first note, whose instrument restarts
-    the pulse program."""
+    """An init `!pw` binding fires from tick 0 until the first note, whose instrument's pulse
+    program rebinds the slot."""
     ins = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], pw: 50}"
-    frames = play(doc("[-*2, C4.i1, -]", ins, head="init: [-!pw:x1]\n", x={"x1": "v + 1"}))
+    frames = play(doc("[-*2, C4.i1, -]", ins, head="init: [-!pw:'v + 1']\n"))
     assert pulse(frames) == [t + 1 for t in range(12)] + [50] * 12
 
 
@@ -261,12 +260,13 @@ def test_a_notes_envelope_commands_apply_with_its_restarts_first_tick_row(
     assert reg(play(doc(phrase, LEAD % restart)), address) == expected
 
 
-def test_a_note_that_keeps_the_pulse_program_keeps_the_pw_command():
-    """D4's instrument has no pulse program, so the !pw command C4 started keeps the pulse
-    width; i1's own pulse program never takes it over."""
+def test_a_note_s_pulse_program_rebinds_after_its_command_and_another_note_leaves_it():
+    """C4's pulse program row runs in the pulse phase, after the events, and rebinds the slot
+    its command bound; a later command binds it, and D4's instrument, with no pulse program,
+    leaves the binding and its φ."""
     ins = {"i1": "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end], pw: 2000}", "i2": BARE}
-    frames = play(doc("[C4.i1!pw:x1, D4.i2, -*2]", ins, x={"x1": "1000 + φ"}))
-    assert pulse(frames) == [1000 + t for t in range(24)]
+    frames = play(doc("[C4.i1!pw:'1000 + φ', -!pw:'1000 + φ', D4.i2, -]", ins))
+    assert pulse(frames) == [2000] * 6 + [1000 + t for t in range(18)]
 
 
 def test_a_legato_note_applies_on_its_restarts_first_tick_row():
@@ -296,10 +296,10 @@ def test_legato_changes_only_the_event_note(second, gates):
 
 R24 = range(24)
 CASES = {
-    "freq-x-ends-at-note": (
-        doc(phrase="[C4.i1!freq:x1, -, D4, -]", x={"x1": "F(N) + 3*φ"}),
+    "freq-command-outlasts-a-note": (
+        doc(phrase="[C4.i1!freq:'F(N) + 3*φ', -, D4, -]"),
         freq,
-        [F(48) + 3 * t if t < 12 else F(50) for t in R24],
+        [F(48 if t < 12 else 50) + 3 * t for t in R24],
     ),
     "freq-offset-none": (
         doc(phrase="[C4.i1!freq:+5, -!freq:none, -*2]"),
@@ -308,13 +308,13 @@ CASES = {
     ),
     "freq-negative": (doc(phrase="[C4.i1!freq:-3, -*3]"), freq, [F(48) - 3] * 24),
     "freq-int": (doc(phrase="[C4.i1!freq:7, -*3]"), freq, [F(48) + 7] * 24),
-    "freq-program-keeps-phi": (
+    "freq-command-rebinds-the-instrument-s-slot": (
         doc(ins="{freq: F(N) + φ}", phrase="[C4.i1, -!freq:+0, -!freq:none, -]"),
         freq,
-        [F(48) + (t if t < 6 else 0 if t < 12 else t - 6) for t in R24],
+        [F(48) + (t if t < 6 else 0) for t in R24],
     ),
     "freq-hold-keeps-a-slide": (
-        doc(phrase="[C4.i1!freq:x1, -!freq:hold, -*2]", x={"x1": "F(N) + φ"}),
+        doc(phrase="[C4.i1!freq:'F(N) + φ', -!freq:hold, -*2]"),
         freq,
         [F(48) + min(t, 5) for t in R24],
     ),
@@ -352,12 +352,12 @@ CASES = {
         [F(48) + min(t, 2) for t in R24],
     ),
     "freq-wraps-16-bits": (doc(ins="{freq: F(N) + 65539}"), freq, [F(48) + 3] * 24),
-    "pw-x-persists": (
-        doc(phrase="[C4.i1, -!pw:x1, -, D4]", x={"x1": "v + 100"}),
+    "pw-command-persists": (
+        doc(phrase="[C4.i1, -!pw:'v + 100', -, D4]"),
         pulse,
         [0 if t < 6 else 100 * (t - 5) for t in R24],
     ),
-    "pw-command-owns": (
+    "pw-command-rebinds": (
         doc(ins="{pw: v + 1000}", phrase="[C4.i1, -!pw:7, D4, -]"),
         pulse,
         [
@@ -370,10 +370,10 @@ CASES = {
         pulse,
         [100 * (min(t, 5) + 1) for t in R24],
     ),
-    "pw-none-returns-to-the-program-modulator": (
+    "pw-program-row-rebinds-after-the-command-and-none-ends-it": (
         doc(ins="{pw: v + 100}", phrase="[C4.i1!pw:7, -!pw:none, -*2]"),
         pulse,
-        [7 + 100 * max(t - 5, 0) for t in R24],
+        [100 * (min(t, 5) + 1) for t in R24],
     ),
     "pw-keep": (
         doc(ins="{pw: 100*φ + 1}", phrase="[C4.i1, D4!pw, -*2]"),
@@ -431,18 +431,18 @@ CASES = {
         cutoff,
         [100 * (min(t, 5) + 1) for t in R24],
     ),
-    "cut-none-returns-to-the-program-modulator": (
+    "cut-program-row-rebinds-after-the-command-and-none-ends-it": (
         doc(ins="{filter: v + 100}", phrase="[C4.i1!cut:7, -!cut:none, -*2]"),
         cutoff,
-        [7 + 100 * max(t - 5, 0) for t in R24],
+        [100 * (min(t, 5) + 1) for t in R24],
     ),
-    "cut-x-ends-at-note": (
-        doc(phrase="[C4.i1!cut:x1, -, D4, -]", x={"x1": "v + 50"}),
+    "cut-command-outlasts-a-note": (
+        doc(phrase="[C4.i1!cut:'v + 50', -, D4, -]"),
         cutoff,
-        [50 * (min(t, 11) + 1) for t in R24],
+        [50 * (t + 1) for t in R24],
     ),
-    "cut-x-hold": (
-        doc(phrase="[C4.i1!cut:x1, -!cut:hold, -*2]", x={"x1": "v + 100"}),
+    "cut-command-hold-keeps-its-value": (
+        doc(phrase="[C4.i1!cut:'v + 100', -!cut:hold, -*2]"),
         cutoff,
         [100 * (min(t, 5) + 1) for t in R24],
     ),
@@ -556,23 +556,6 @@ def test_cells_rows_and_commands(text, read, expected):
 
 
 @pytest.mark.parametrize(
-    "old, new",
-    [
-        (doc(ins="{pw: v + 100}", phrase="[C4.i1!pw:7, -!pw:none, -*2]"), "-!pw:hold"),
-        (doc(ins="{pw: [{pw: v + 9}, {wait: 2, pw: none}, {pw: v + 1}, end]}"), "pw: hold"),
-        (doc(ins="{filter: v + 100}", phrase="[C4.i1!cut:7, -!filter:none, -*2]"), "-!cut:hold"),
-        (doc(ins="{filter: [{cut: v + 9}, {wait: 2, filter: none}, end]}"), "cut: hold"),
-    ],
-)
-def test_a_1_20_document_plays_its_pw_none_and_filter_none_as_hold(old, new):
-    """Format 1.20's ``pw: none`` and ``filter: none`` are 1.21's ``pw: hold`` and
-    ``cut: hold``."""
-    spelled = old.replace("-!filter:none", new).replace("-!pw:none", new)
-    spelled = spelled.replace("filter: none", new).replace("pw: none", new)
-    assert np.array_equal(play(old.replace("1.21", "1.20")), play(spelled))
-
-
-@pytest.mark.parametrize(
     "expr, value",
     [
         ("7 // 2 + 7 % 3 + (5 > 3) + abs(-9) + min(4, 8) + max(4, 8)", 26),
@@ -589,7 +572,7 @@ def test_a_1_20_document_plays_its_pw_none_and_filter_none_as_hold(old, new):
 def test_expressions_are_floored_python_integers(expr, value):
     """`//` and `%` floor and give 0 for a 0 divisor, comparisons are 1 or 0, F is 0 outside its
     table, T[k] is 0 outside the list and the result wraps to the cell."""
-    text = doc("[C4.i1!pw:x1, -*3]", head="tables:\n  W: [5, 6, 7]\n", x={"x1": expr})
+    text = doc(f"[C4.i1!pw:'{expr}', -*3]", head="tables:\n  W: [5, 6, 7]\n")
     assert pulse(play(text))[0] == value
 
 
@@ -639,15 +622,12 @@ def test_regs_is_the_register_file_each_tick_rewrites():
 
 
 def _twice(text: str) -> str:
-    return text.replace("      ins:\n", "      ins:\n        i1: {ad: 1}\n", 1)
+    return text.replace("ins:\n", "ins:\n  i1: {ad: 1}\n", 1)
 
 
 @pytest.mark.parametrize(
     "text, match",
     [
-        (doc().replace("1.21", "1.24"), "version"),
-        (doc(ins="{filter: [{cut: 9}, {filter: none}, end]}"), "spelling of cut: hold"),
-        (doc("[C4.i1!filter:none, -*3]"), "spelling of cut: hold"),
         (doc(head="voices: 4\n", rows=("[p1, p1, p1, p1]",)), "voices"),
         (doc(head="voices: 2\n"), "play entries"),
         (doc(head="init: [-, -]\n"), "init"),
@@ -657,7 +637,7 @@ def _twice(text: str) -> str:
         (doc(ending=1), "loop"),
         (doc(ins="{ctrl: [{ctrl: 65}, {loop: 3}]}"), "loop"),
         (doc("[C4.i2, -*3]"), "i2"),
-        (doc("[C4.i1!pw:x1, -*3]", x={"x1": "W[0]"}), "W"),
+        (doc("[C4.i1!pw:'W[0]', -*3]"), "W"),
         (doc(ins="{ctrl: [{hold: 0, ctrl: 65}, {loop: 0}]}"), "loops in no time"),
         (
             doc(
@@ -679,9 +659,6 @@ def _twice(text: str) -> str:
         (doc(phrase="[-!run:c1, C4.i1, -*2]", ctrl={"c1": ARP}), "no instrument"),
     ],
     ids=[
-        "version",
-        "row-filter-none",
-        "command-filter-none",
         "voices",
         "entries",
         "init",
@@ -700,7 +677,7 @@ def _twice(text: str) -> str:
     ],
 )
 def test_refusals(text, match):
-    """Another version, more than 3 voices, a play row or init row of the wrong length, a tempo
+    """More than 3 voices, a play row or init row of the wrong length, a tempo
     of 0, a loop outside its rows, an undefined name or table, a program looping in no time, an
     entry that disagrees with which phrases ended, a name defined twice and a program run on a
     voice with no instrument are refused."""

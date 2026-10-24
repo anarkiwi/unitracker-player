@@ -7,30 +7,25 @@ from dataclasses import dataclass
 from unitracker_grammar import PAL_HZ
 from unitracker_grammar.code import Call, check, inline
 from unitracker_grammar.code import params as code_params
-from unitracker_grammar.expr import ExpressionError, bind
+from unitracker_grammar.expr import bind
 
 from unitracker_player.code import Machine, Routine
 from unitracker_player.document import (
     HOLD,
+    RESET,
     Code,
     Document,
     Expr,
     Param,
     Program,
     Row,
-    TOP,
     Slot,
     note_number,
     read,
 )
 from unitracker_player.expr import compile_expr, constant, note_table, offset
-from unitracker_player.modulation import SHAPES
 from unitracker_player.sequencer import PlayError
 
-VERSION = "1.23"
-SLOTTED = "1.22"
-OWNED = ("1.20", "1.21")
-LEGACY = "1.20"
 MAX_VOICES = 3
 REGISTERS = 25
 ENVELOPE = ("ad", "sr", "ctrl")
@@ -57,9 +52,8 @@ class CProgram:
 
 @dataclass(frozen=True)
 class CInstrument:
-    """A compiled instrument; ``freq`` its ``(slot, fn)`` frequency modulators or None, ``fn``
-    its shape's function ``f(bag, v, t, note)``, ``p0`` the bag it starts from, and ``restart``
-    its rows with the ticks each precedes the note."""
+    """A compiled instrument; ``freq`` its ``(slot, fn)`` frequency modulators or None, and
+    ``restart`` its rows with the ticks each precedes the note."""
 
     ad: int | None
     sr: int | None
@@ -67,8 +61,6 @@ class CInstrument:
     pw: CProgram | None
     filter: CProgram | None
     freq: object
-    fn: object | None
-    p0: dict | None
     restart: tuple | None
 
 
@@ -89,12 +81,12 @@ class CEvent:
 
 
 @dataclass(frozen=True)
-class Song:
-    """A document compiled for playing; ``slots`` is ``{cell: slot names}``, None in the formats
-    whose command modulators own their cells; ``marks`` ``{mark: events}`` for each ``hold key``
-    and ``reset key``, ``rows`` their row events; ``defaults`` ``{cell: ((slot, fn), ...)}``;
-    ``order`` the phases of a tick; ``state`` ``{cell: bytes of its state}`` and ``code``
-    whether a code modulator plays."""
+class Song:  # pylint: disable=too-many-instance-attributes
+    """A document compiled for playing; ``slots`` is ``{cell: slot names}``; ``marks``
+    ``{mark: events}`` for each ``hold slot.cell`` and ``reset slot.cell``, ``rows`` their row
+    events; ``defaults`` ``{cell: ((slot, fn), ...)}``;
+    ``order`` the phases of a tick; ``state`` ``{cell: bytes of its state}``, ``code``
+    whether a code modulator plays and ``regs`` the registers before tick 0."""
 
     voices: int
     tempo: tuple
@@ -107,11 +99,12 @@ class Song:
     marks: dict
     rows: dict
     horizon: int
-    slots: dict | None
+    slots: dict
     defaults: dict
     order: tuple
     state: dict
     code: bool
+    regs: tuple
 
 
 def _tempo(value, where: str) -> tuple:
@@ -131,41 +124,25 @@ def _kind(name: str) -> str:
     return {"r": "restart", "c": "ctrl", "p": "pw", "f": "filter"}[name[0]]
 
 
-def _bound(value, bag: dict, where):
+def _bound(value, bag: dict):
     """A program row's value with each parameter of a template's that it reads, a Param, a
     cell value that is its name alone or a call's named argument, its integer in ``bag``."""
     if isinstance(value, Param):
-        return _argument(value.name, bag, where) * value.sign
+        return bag[value.name] * value.sign
     if isinstance(value, Expr) and isinstance(value.node, ast.Name) and value.node.id in bag:
         return bag[value.node.id]
     if isinstance(value, Call):
-        args = tuple(a if isinstance(a, int) else _argument(a, bag, where) for a in value.args)
+        args = tuple(a if isinstance(a, int) else bag[a] for a in value.args)
         return Call(value.name, args)
     if isinstance(value, tuple):
-        return tuple(_bound(v, bag, where) for v in value)
+        return tuple(_bound(v, bag) for v in value)
     return value
-
-
-def _argument(name: str, bag: dict, where) -> int:
-    if name not in bag:
-        raise PlayError(f"program {where}: parameter {name} is no template's of format {VERSION}")
-    return bag[name]
 
 
 def _ticks(value: int, where) -> int:
     if value < 0:
         raise PlayError(f"program {where}: {value} ticks")
     return value
-
-
-def _spelled(key: str, value, legacy: bool) -> tuple:
-    """A row key or command in the current format's spelling: format 1.20's ``pw: none`` is
-    ``pw: hold`` and its ``filter: none`` ``cut: hold``, which 1.21 alone spells."""
-    if key == "filter":
-        if not legacy:
-            raise PlayError(f"filter: none is {LEGACY}'s spelling of cut: hold")
-        return "cut", HOLD
-    return key, HOLD if legacy and key == "pw" and value is None else value
 
 
 class _Compiler:
@@ -177,36 +154,16 @@ class _Compiler:
     def __init__(self, doc: Document, table):
         self.doc, self.table = doc, table
         head = doc.header
-        self.legacy = head.version == LEGACY
         self.memo: dict = {}
-        self.slots = self.slotted = self.machine = None
-        coded = any(isinstance(t, Code) for t in doc.templates.values())
-        self.calls = head.version == VERSION
-        if not self.calls and any((head.state, coded, doc.signatures, doc.top, doc.forms)):
-            raise PlayError(f"state, code, signatures and the mod section: format {VERSION}'s")
-        if self.calls and (doc.expressions or doc.top != doc.templates.keys()):
-            raise PlayError(f"x, a row's mod: format {VERSION} calls its mod section's templates")
-        if self.calls and doc.rows & set(TOP):
-            raise PlayError(
-                f"a row's {', '.join(sorted(doc.rows & set(TOP)))}: format {VERSION} "
-                "defines restart, ins, ctrl, pw and filter at the top level"
-            )
-        if not self.calls and doc.at_top:
-            raise PlayError(f"top-level {', '.join(sorted(doc.at_top))}: format {VERSION}'s")
-        if head.version in OWNED:
-            if head.slots:
-                raise PlayError(f"slots: format {SLOTTED}'s")
-        else:
-            if head.hold:
-                raise PlayError(f"hold: format {SLOTTED} holds in its slots line")
-            self.slotted = {c: head.slots.get(c, (Slot(c),)) for c in CELLS}
-            self.slots = {c: tuple(s.name for s in slots) for c, slots in self.slotted.items()}
-            for cell, names in self.slots.items():
-                if len(set(names)) != len(names):
-                    raise PlayError(f"slots: {cell} names a slot twice")
+        self.machine = None
+        self.slotted = {c: head.slots.get(c, (Slot(c),)) for c in CELLS}
+        self.slots = {c: tuple(s.name for s in slots) for c, slots in self.slotted.items()}
+        for cell, names in self.slots.items():
+            if len(set(names)) != len(names):
+                raise PlayError(f"slots: {cell} names a slot twice")
         self.order = ORDER if head.order is None else head.order
-        if head.order is not None and (self.slots is None or sorted(head.order) != sorted(PHASES)):
-            raise PlayError(f"order: format {SLOTTED}'s, each of {', '.join(PHASES)} once")
+        if head.order is not None and sorted(head.order) != sorted(PHASES):
+            raise PlayError(f"order: each of {', '.join(PHASES)} once")
 
     def fn(self, expr: Expr, freq: bool = False, key=None):
         """The compiled expression, memoised by its node or by ``key``."""
@@ -261,7 +218,7 @@ class _Compiler:
         if isinstance(body, Call):
             if key not in self.memo:
                 self.memo[key] = None
-                self.memo[key] = self.program(_bound(body, dict(zip(declared, ref.args)), ref), own)
+                self.memo[key] = self.program(_bound(body, dict(zip(declared, ref.args))), own)
             if self.memo[key] is None:
                 raise PlayError(f"{ref}: a program template calls itself")
             return self.memo[key]
@@ -289,9 +246,9 @@ class _Compiler:
         bag = bag or {}
         out.rows = tuple(
             (
-                _ticks(_bound(r.wait, bag, ref), ref),
-                _ticks(_bound(r.hold, bag, ref), ref),
-                self.ops(_bound(r.keys, bag, ref)),
+                _ticks(_bound(r.wait, bag), ref),
+                _ticks(_bound(r.hold, bag), ref),
+                self.ops(_bound(r.keys, bag)),
             )
             for r in source.rows
         )
@@ -300,33 +257,26 @@ class _Compiler:
     def ops(self, keys) -> tuple:
         out = []
         for key, value in keys:
-            key, value = _spelled(key, value, self.legacy)
             if key.rpartition(".")[2] in CELLS:
-                key, value = self.cell(key, value, False)
+                key, value = self.cell(key, value)
             elif key == "run":
                 value = self.run(value)
             out.append((key, value))
         return tuple(out)
 
-    def cell(self, key: str, value, command: bool) -> tuple:
+    def cell(self, key: str, value) -> tuple:
         """A modulated cell's key (``cell`` or ``slot.cell``) and value as ``(cell, (slot, fn))``,
-        or for a stop ``(cell, (stop, the slots it ends))``. In the owning formats a row's
-        modulator is the program slot 0 and a command's the command slot 1; ``hold`` ends the
-        slots up to its own there, and every slot of the cell else."""
+        or for a stop ``(cell, (stop, the slots it acts on))``: ``none`` and ``reset`` its slot,
+        ``hold`` every slot of the cell."""
         name, _, cell = key.rpartition(".")
-        if self.slots is None:
-            if name:
-                raise PlayError(f"{key}: a slot prefix is format {SLOTTED}'s")
-            slot, ends = int(command), int(command) + 1
-        else:
-            names = self.slots[cell]
-            if name and name not in names:
-                raise PlayError(f"{key}: {cell} has no slot {name}")
-            slot, ends = names.index(name) if name else 0, len(names)
-        if value is None:
-            return cell, (None, (slot,))
+        names = self.slots[cell]
+        if name and name not in names:
+            raise PlayError(f"{key}: {cell} has no slot {name}")
+        slot = names.index(name) if name else 0
+        if value is None or value == RESET:
+            return cell, (value, (slot,))
         if value == HOLD:
-            return cell, (HOLD, tuple(range(ends)))
+            return cell, (HOLD, tuple(range(len(names))))
         return cell, (slot, self.expression(value, cell))
 
     def restart(self, ref) -> tuple | None:
@@ -338,15 +288,6 @@ class _Compiler:
             ahead += hold + wait
             ticks.append(ahead)
         return tuple(zip(prog.rows, reversed(ticks)))
-
-    def shape(self, fn):
-        if fn is None:
-            return None
-        if callable(fn):
-            return fn
-        if fn not in SHAPES:
-            raise PlayError(f"unknown modulator {fn}")
-        return SHAPES[fn]
 
     def instrument(self, name: str | None) -> CInstrument | None:
         if name is None:
@@ -361,66 +302,29 @@ class _Compiler:
                 self.program(ins.ctrl, "ctrl"),
                 self.program(ins.pw, "pw", True),
                 self.program(ins.filter, "filter", True),
-                tuple(self.cell(key, value, False)[1] for key, value in ins.freq) or None,
-                self.shape(ins.fn),
-                dict(ins.p0) if ins.p0 else None,
+                tuple(self.cell(key, value)[1] for key, value in ins.freq) or None,
                 self.restart(ins.restart),
             )
         return self.memo[key]
 
     def expression(self, value, cell: str):
-        """The modulator a binding of ``cell`` names: an integer, an expression, a call, or
-        before format 1.23 an instance's or a template's name or a template with its parameter
-        bag; a code template's is its :class:`Routine`."""
+        """The modulator a binding of ``cell`` names: an integer, a call, a code body, or an
+        expression that names no template; a code template's is its :class:`Routine`."""
         freq = cell == "freq"
         if isinstance(value, int):
             return self.fn(Expr(ast.Constant(value)), freq)
         if isinstance(value, Call):
-            if not all(isinstance(a, int) for a in value.args):
-                raise PlayError(f"{value}: a parameter is read only in a program template's rows")
             return self.call(value, cell)
         if isinstance(value, Code):
             return self.anonymous(value, cell)
-        if self.calls:
-            return self._uncalled(value, cell)
-        if isinstance(value, str):
-            if value in self.doc.expressions:
-                return self.expression(self.doc.expressions[value], cell)
-            self.named("modulator", self.doc.templates, value)
-            value = Expr(ast.Name(value))
-        node = value.node
-        if isinstance(node, ast.Name) and node.id in self.doc.templates:
-            node = self.doc.templates[node.id].node
-            value = Expr(value.node, value.bag or ())
-        elif value.bag is not None:
-            raise PlayError(f"{ast.unparse(node)}: a parameter bag binds a template")
-        if value.bag is not None:
-            if not all(isinstance(x, int) for _, x in value.bag):
-                raise PlayError(f"{ast.unparse(value.node)}: a parameter is an integer")
-            try:
-                node = bind(node, dict(value.bag))
-            except ExpressionError as exc:
-                raise PlayError(f"{ast.unparse(value.node)}: {exc}") from exc
-        return self.fn(Expr(node), freq)
-
-    def _uncalled(self, value, cell: str):
-        """Format 1.23's binding that is no call: an expression that names no template and has
-        no bag."""
-        node = value.node if isinstance(value, Expr) else None
-        if (
-            node is None
-            or value.bag is not None
-            or self.doc.templates.keys() & {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
-        ):
-            text = value if node is None else ast.unparse(node)
-            raise PlayError(f"{text}: format {VERSION} binds a template by a call, name(1,-2)")
-        return self.fn(value, cell == "freq")
+        names = {n.id for n in ast.walk(value.node) if isinstance(n, ast.Name)}
+        if self.doc.templates.keys() & names:
+            raise PlayError(f"{ast.unparse(value.node)}: a template is bound by a call, name(1,-2)")
+        return self.fn(value, freq)
 
     def call(self, value: Call, cell: str):
         """The modulator of a call: its template with each declared parameter its argument,
         memoised by the template, the cell and the arguments."""
-        if not self.calls:
-            raise PlayError(f"{value}: a call is format {VERSION}'s")
         doc = self.doc
         template = self.named("modulator", doc.templates, value.name)
         declared = doc.signatures[value.name]
@@ -438,8 +342,6 @@ class _Compiler:
     def anonymous(self, value: Code, cell: str) -> Routine:
         """An anonymous code body's routine, memoised by its one text and the cell."""
         text = inline(value.statements)
-        if not self.calls:
-            raise PlayError(f"{text}: code is format {VERSION}'s")
         if code_params(value.statements):
             raise PlayError(f"{text}: an anonymous body reads no parameter")
         key, head = ("asm", text, cell), self.doc.header
@@ -455,18 +357,17 @@ class _Compiler:
         """``{cell: ((slot, fn), ...)}`` of the slots' default bindings."""
         return {
             cell: tuple((k, self.expression(s.mod, cell)) for k, s in enumerate(slots) if s.mod)
-            for cell, slots in (self.slotted or {}).items()
+            for cell, slots in self.slotted.items()
         }
 
     def event(self, event) -> CEvent:
         cmds = dict(event.commands)
         ops = []
         for key, value in event.commands:
-            key, value = _spelled(key, value, self.legacy)
             if key == "run":
                 value = None if value is None else self.run(value)
             elif key.rpartition(".")[2] in CELLS:
-                key, value = self.cell(key, value, True)
+                key, value = self.cell(key, value)
             elif key in ("tempo", "vtempo", "legato"):
                 continue
             ops.append((key, value))
@@ -505,10 +406,6 @@ def compile_document(doc: Document, compiler=None) -> Song:
     """The Song of a Document: every name resolved and every expression compiled once, by
     ``compiler``, a ``_Compiler`` subclass when given."""
     head = doc.header
-    if head.version not in (*OWNED, SLOTTED, VERSION):
-        raise PlayError(
-            f"version {head.version}: the player reads {', '.join((*OWNED, SLOTTED))} and {VERSION}"
-        )
     if not 1 <= head.voices <= MAX_VOICES:
         raise PlayError(f"voices: {head.voices}: the player plays 1 to {MAX_VOICES} voices")
     clock_hz = head.clock_hz or PAL_HZ
@@ -529,7 +426,7 @@ def compile_document(doc: Document, compiler=None) -> Song:
         raise PlayError(f"song: loop row {doc.loop} out of range")
     instruments = [v for k, v in comp.memo.items() if k[0] == "ins"]
     lookahead = max((r[0][1] for i in instruments if (r := i.restart)), default=0)
-    marks = _marks(head.hold, comp.slotted)
+    marks = _marks(comp.slotted)
     earliest = max((k for events in marks.values() for _, k in events), default=0)
     return Song(
         head.voices,
@@ -551,15 +448,22 @@ def compile_document(doc: Document, compiler=None) -> Song:
         comp.order,
         {cell: sum(size for _, size in names) for cell, names in head.state.items()},
         comp.machine is not None,
+        _regs(head.regs),
     )
 
 
-def _marks(hold: dict, slots: dict | None) -> dict:
-    """``{mark: events}``: ``hold key`` for each key of the hold line in the owning formats
-    (``ctrl.cell`` a control row's modulators), else ``hold slot.cell`` and ``reset slot.cell``
-    for each slot."""
-    marks = {f"hold {key}": events for key, events in hold.items()}
-    for cell, cells in (slots or {}).items():
+def _regs(regs: tuple | None) -> tuple:
+    """The registers before tick 0, each a byte: all 0 where the document gives none."""
+    regs = regs or (0,) * REGISTERS
+    if len(regs) != REGISTERS:
+        raise PlayError(f"regs: {len(regs)} values for {REGISTERS} registers")
+    return tuple(r & 0xFF for r in regs)
+
+
+def _marks(slots: dict) -> dict:
+    """``{mark: events}``: ``hold slot.cell`` and ``reset slot.cell`` for each slot."""
+    marks = {}
+    for cell, cells in slots.items():
         for slot in cells:
             marks[f"hold {slot.name}.{cell}"] = slot.hold
             marks[f"reset {slot.name}.{cell}"] = slot.reset

@@ -1,7 +1,6 @@
-"""Rewrites a canonical document with every definition inline at its use: instruments, programs,
-phrases and expression instances from the rows' ``def`` sections, and format 1.23's template
-calls as anonymous code bodies and quoted expressions, the sections and the top-level ``mod``
-section dropped, as are format 1.23's top-level definition sections."""
+"""Rewrites a canonical document with every definition inline at its use: instruments, programs
+and phrases, and template calls as anonymous code bodies and quoted expressions, the top-level
+definition sections and the rows' phrase sections dropped."""
 
 import functools
 
@@ -11,7 +10,9 @@ from unitracker_grammar import code as C
 from unitracker_grammar.document import printed, read
 from unitracker_grammar import expr as E
 
-DEFINED = {"INS", "CTRL", "PW", "FILTER", "RESTART", "PHRASE", "X"}
+DEFINED = {"INS", "CTRL", "PW", "FILTER", "RESTART", "PHRASE"}
+SECTIONS = {f"def_{k}" for k in ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase")}
+RUNS = {"row_run", "cmd_run"}
 KIND = {"CTRL": "ctrl", "PW": "pw", "FILTER": "filter"}
 CELL = {"PW": "pw", "FILTER": "cut"}
 
@@ -38,20 +39,20 @@ class _Inliner:
 
     def __init__(self, text: str):
         self.text, self.tree = text, parser().parse(text)
-        self.defs, self.keys, self.templates, self.refs = {}, set(), {}, []
+        self.defs, self.templates, self.refs, keys = {}, {}, [], set()
         for node in self.tree.iter_subtrees():
-            if node.data in ("section", "mods"):
-                for key, body in zip(node.children, node.children[1:]):
-                    if isinstance(key, Token) and key.type in DEFINED:
-                        self.defs[str(key)] = body
-                        self.keys.add(key.start_pos)
-                    elif isinstance(key, Token) and key.type == "SIGNATURE":
+            if node.data in SECTIONS:
+                for key, body in zip(node.children[::2], node.children[1::2]):
+                    keys.add(key.start_pos)
+                    if key.type == "SIGNATURE":
                         name, declared = C.signature(key)
                         self.templates[name] = declared, body
+                    else:
+                        self.defs[str(key)] = body
             for child in node.children:
                 if isinstance(child, Token) and child.type in DEFINED | {"CALL"}:
                     self.refs.append((child, node.data))
-        self.refs = [(t, p) for t, p in self.refs if t.start_pos not in self.keys]
+        self.refs = [(t, p) for t, p in self.refs if t.start_pos not in keys]
 
     def expand(self, start: int, end: int, stack=()) -> str:
         """The text of ``[start, end)`` with each reference in it expanded."""
@@ -72,9 +73,7 @@ class _Inliner:
         event's definition, a play entry's phrase, a call's body."""
         if token.type == "CALL":
             return self.call(C.call(token))
-        if token.type == "X":
-            return f"'{E.printed(E.Nodes().transform(self.defs[str(token)]))}'"
-        if parent != "program_name":
+        if parent not in RUNS:
             return self.body(str(token), stack)
         node = self.defs[str(token)]
         if node.data == "modulation" and isinstance(node.children[0], Tree):
@@ -104,19 +103,16 @@ class _Inliner:
         return C.inline(statements)
 
     def edits(self) -> list:
-        """``(start, end, text)`` of each top-level replacement: the dropped sections, a row head
-        left with none, the top-level mod section, and the references elsewhere."""
-        out = []
+        """``(start, end, text)`` of each top-level replacement: the dropped sections and each
+        row's head, left with its play entries, and the references elsewhere."""
+        out = [
+            (*_span(s), "")
+            for s in self.tree.children
+            if isinstance(s, Tree) and s.data in SECTIONS
+        ]
         for row in self.tree.find_data("row"):
-            sections = [c for c in row.children if isinstance(c, Tree) and c.data == "section"]
-            dropped = [s for s in sections if s.children[0].type in DEFINED]
-            out += [(*_span(s), "") for s in dropped]
-            if sections and len(dropped) == len(sections):
-                plays = row.children[-1]
-                out = out[: -len(dropped)] + [(row.meta.start_pos, _span(plays)[0], "  - play: ")]
-        out += [(*_span(m), "") for m in self.tree.find_data("mods")]
-        top = [c for c in self.tree.children if isinstance(c, Tree) and c.data == "section"]
-        out += [(*_span(s), "") for s in top if s.children[0].type in DEFINED]
+            if row.children[0].data == "def_phrase":
+                out.append((row.meta.start_pos, _span(row.children[-1])[0], "  - play: "))
         return out
 
 

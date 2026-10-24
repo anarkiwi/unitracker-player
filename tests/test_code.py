@@ -1,4 +1,4 @@
-"""Format 1.23's code modulators assembled and fired on their 6502 (docs/semantics.md, Code
+"""Code modulators assembled and fired on their 6502 (docs/semantics.md, Code
 modulators)."""
 
 import pytest

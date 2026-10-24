@@ -23,6 +23,7 @@ from unitracker_grammar.expr import params as expr_params
 
 NONE = None
 HOLD = "hold"
+RESET = "reset"
 _MISSING = object()
 _VALUES = {
     "INT",
@@ -34,19 +35,17 @@ _VALUES = {
     "PW",
     "FILTER",
     "RESTART",
-    "X",
     "PHRASE",
     "XTABLE",
     "META_KEY",
     "TEXT",
     "SQUOTED",
     "DQUOTED",
-    "VERSION",
     "CTRLMASK",
     "NONE",
     "HOLD",
+    "RESET",
     "NAME",
-    "HOLD_CELL",
     "HOLD_EVENT",
     "CELL",
     "PHASE",
@@ -55,16 +54,11 @@ _VALUES = {
     "PROGRAM_KIND",
     "PARAM",
     "REL_PARAM",
-    "RUN_KIND",
-    "RESTART_SIG",
-    "CTRL_SIG",
-    "PW_SIG",
-    "FILTER_SIG",
+    "PROGRAM_SIG",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
-TOP = ("restart", "ins", "ctrl", "pw", "filter")
-_KINDS = {"restart", "ins", "ctrl", "pw", "filter", "x", "phrase", "mod"}
+KINDS = ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase")
 _CELL = {"pw": "pw", "filter": "cut", "cut": "cut", "freq": "freq"}
 
 
@@ -76,11 +70,9 @@ def note_number(name: str) -> int:
 
 @dataclass(frozen=True)
 class Expr:
-    """A modulator expression as its node (:mod:`unitracker_grammar.expr`); with ``bag``, its
-    ``(parameter, value)`` pairs, the node names a template."""
+    """A modulator expression as its node (:mod:`unitracker_grammar.expr`)."""
 
     node: ast.expr
-    bag: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -132,9 +124,9 @@ class Program:
 
 @dataclass(frozen=True)
 class Instrument:
-    """An instrument's fields; a program field holds a name or a program, ``freq`` its
-    ``(key, binding)`` fields, ``key`` ``freq`` or ``slot.freq`` and a binding an Expr, an
-    instance's name or None."""
+    """An instrument's fields; a program field holds a name, a call or a program, ``freq`` its
+    ``(key, binding)`` fields, ``key`` ``freq`` or ``slot.freq`` and a binding a modulator or
+    None."""
 
     ad: int | None = None
     sr: int | None = None
@@ -142,8 +134,6 @@ class Instrument:
     pw: str | Program | None = None
     filter: str | Program | None = None
     freq: tuple = ()
-    fn: object | None = None
-    p0: dict | None = None
     restart: str | Program | None = None
 
 
@@ -172,46 +162,40 @@ class Play:
 
 @dataclass(frozen=True)
 class Header:
-    """The header lines, with their defaults; ``hold`` is ``{cell: ((event, k), ...)}``,
-    ``slots`` ``{cell: (Slot, ...)}``, ``order`` the phases of a tick or None, ``state``
-    ``{cell: ((name, size), ...)}``."""
+    """The header lines, with their defaults; ``slots`` ``{cell: (Slot, ...)}``, ``order`` the
+    phases of a tick or None, ``state`` ``{cell: ((name, size), ...)}``, ``regs`` the registers
+    before tick 0 or None."""
 
-    version: str
     meta: dict = field(default_factory=dict)
     cycles_per_tick: int | None = None
     clock_hz: int | None = None
     voices: int = 3
     tempo: tuple = (6, 6)
-    hold: dict = field(default_factory=dict)
     slots: dict = field(default_factory=dict)
     order: tuple | None = None
     state: dict = field(default_factory=dict)
+    regs: tuple | None = None
 
 
 @dataclass(frozen=True)
 class Document:
     """A whole document: the header, its tables and init row, every definition by name and the
     timeline's rows of play entries with its ending (``loop`` None for ``end``); ``templates``
-    the ``mod`` records by name, each an Expr or a Code, ``signatures`` ``{name: parameters}``
-    of those keyed by a signature and ``top`` the names of the top-level ``mod`` section's;
-    ``forms`` the program templates, ``{name: (kind, parameters, program)}``; ``rows`` the
-    kinds of the rows' ``def`` sections and ``at_top`` those of the top-level ones but ``mod``."""
+    the modulator templates by name, each an Expr or a Code, ``signatures`` their parameters,
+    ``{name: parameters}``, and ``forms`` the program templates, ``{name: (kind, parameters,
+    program)}``."""
 
     header: Header
     tables: dict
     init: tuple | None
     instruments: dict
     programs: dict
-    expressions: dict
+    forms: dict
     phrases: dict
     timeline: tuple
     loop: int | None
-    templates: dict = field(default_factory=dict)
-    signatures: dict = field(default_factory=dict)
-    top: frozenset = frozenset()
-    forms: dict = field(default_factory=dict)
-    rows: frozenset = frozenset()
-    at_top: frozenset = frozenset()
+    templates: dict
+    signatures: dict
 
 
 def _tok(token: Token):
@@ -221,8 +205,6 @@ def _tok(token: Token):
         return call(token)
     if token.type in ("PARAM", "REL_PARAM"):
         return Param(token.lstrip("+-"), -1 if token[0] == "-" else 1)
-    if token.type == "RUN_KIND":
-        return token[:-1]
     return NONE if token.type == "NONE" else str(token)
 
 
@@ -240,22 +222,43 @@ def _words(children) -> list[str]:
     return [c.strip() for c in children if isinstance(c, Token) and c.type not in _VALUES]
 
 
+class _Chain(list):
+    """A key chain's ``(key, value)`` pairs from a link on, in the order written."""
+
+
+def _split(children) -> tuple:
+    """A link's own values and the chain's rest after it."""
+    own, rest = [], _Chain()
+    for c in _values(children):
+        if isinstance(c, _Chain):
+            rest = c
+        else:
+            own.append(c)
+    return own, rest
+
+
 def _link(key):
     """A link of a key chain: its own key's value (one value or a tuple) before the chain's
     rest."""
 
     def method(_self, children):
-        rest, own = {}, []
-        for c in _values(children):
-            if isinstance(c, dict):
-                rest = c
-            else:
-                own.append(c)
+        own, rest = _split(children)
         if not own:
             return rest
-        return {key: own[0] if len(own) == 1 else tuple(own), **rest}
+        return _Chain([(key, own[0] if len(own) == 1 else tuple(own))] + rest)
 
     return method
+
+
+def _paired(children) -> list:
+    """A definition section's ``(name, value)`` records."""
+    values = _values(children)
+    return list(zip(map(str, values[::2]), values[1::2]))
+
+
+def _section(kind: str):
+    """A definition section's rule: ``(kind, records)``."""
+    return lambda _self, children: (kind, _paired(children))
 
 
 def _chain(prefix, keys):
@@ -269,55 +272,39 @@ class ToDocument(Nodes):
     # pylint: disable=too-many-public-methods,missing-function-docstring
 
     def start(self, children):
-        head, defs, timeline = {"tables": {}, "init": None}, {k: {} for k in _KINDS}, []
+        head, defs, timeline = {"tables": {}, "init": None}, {k: {} for k in KINDS}, []
         for item in _values(children):
             tag = item[0]
-            if tag in TOP:
-                item, tag = ("defs", [item]), "defs"
-            if isinstance(item, str):
-                head["version"] = item
-            elif tag in ("row", "mods", "defs"):
-                for kind, entries in item[1]:
-                    head.setdefault("rows" if tag == "row" else "at_top", set()).add(kind)
+            if tag in KINDS or tag == "row":
+                for kind, entries in [item] if tag in KINDS else item[1]:
                     for name, value in entries:
                         if name in defs[kind]:
                             raise CanonicalError(f"{name} is defined twice")
                         defs[kind][name] = value
                 if tag == "row":
                     timeline.append(item[2])
-                elif tag == "mods":
-                    head["top"] = frozenset(signature(n)[0] for n, _ in item[1][0][1])
             else:
                 head[tag] = item[1]
         header = Header(
-            head.pop("version"),
             head.pop("meta"),
             *head.pop("clock", (None, None)),
             head.pop("voices", 3),
             head.pop("tempo", (6, 6)),
-            head.pop("hold", {}),
             head.pop("slots", {}),
             head.pop("order", None),
             head.pop("state", {}),
+            head.pop("regs", None),
         )
-        templates, signatures = _check(defs["mod"], header.state)
-        defs["programs"], defs["forms"] = _programs(defs)
         return Document(
             header,
             head["tables"],
             head["init"],
             defs["ins"],
-            defs["programs"],
-            defs["x"],
+            *_programs(defs),
             defs["phrase"],
             tuple(timeline),
             head["ending"],
-            templates,
-            signatures,
-            head.pop("top", frozenset()),
-            defs["forms"],
-            frozenset(head.pop("rows", ())),
-            frozenset(head.pop("at_top", set()) - {"mod"}),
+            *_check(defs["mod"], header.state),
         )
 
     @staticmethod
@@ -351,14 +338,6 @@ class ToDocument(Nodes):
         return ("tempo", (values[0], values[-1]))
 
     @staticmethod
-    def hold(children):
-        return ("hold", dict(_values(children)))
-
-    @staticmethod
-    def hold_cell(children):
-        return tuple(_values(children))
-
-    @staticmethod
     def events(children):
         return tuple(
             (str(name), int(k or 0)) for name, _, k in (e.partition("-") for e in children)
@@ -370,7 +349,7 @@ class ToDocument(Nodes):
 
     @staticmethod
     def state(children):
-        (cells,) = children
+        cells = dict(children[0])
         names = [n for variables in cells.values() for n, _ in variables]
         if len(set(names)) != len(names):
             raise CanonicalError(f"state variables declared twice: {names}")
@@ -393,6 +372,10 @@ class ToDocument(Nodes):
     def slot(children):
         name, *rest = _values(children)
         return Slot(name, **(rest[0] if rest else {}))
+
+    @staticmethod
+    def regs(children):
+        return ("regs", children[0])
 
     @staticmethod
     def tables(children):
@@ -429,34 +412,30 @@ class ToDocument(Nodes):
         return Play("cont" if _words(children) == ["~"] else "end")
 
     @staticmethod
-    def mods(children):
-        return ("mods", [ToDocument.section(children)])
+    def def_mod(children):
+        return ("mod", [(k, v if isinstance(v, Code) else Expr(v)) for k, v in _paired(children)])
 
     @staticmethod
-    def section(children):
-        kind = children[0].type.lower().removesuffix("_sig")
-        kind = "mod" if kind in ("name", "signature") else kind
-        entries = []
-        for c in _values(children):
-            if isinstance(c, str):
-                entries.append([c])
-            elif isinstance(c, dict):
-                entries[-1][1] = Expr(entries[-1][1], tuple(c.items()))
-            else:
-                entries[-1].append(c)
-        if kind in ("x", "mod"):
-            return (kind, [(n, v if isinstance(v, (Expr, Code)) else Expr(v)) for n, v in entries])
-        if kind in ("pw", "filter"):
-            return (kind, [(n, _modulation(kind, [(kind, v)])) for n, v in entries])
-        return (kind, [tuple(e) for e in entries])
+    def def_pw(children):
+        return ("pw", [(n, _modulation("pw", [("pw", v)])) for n, v in _paired(children)])
+
+    @staticmethod
+    def def_filter(children):
+        return (
+            "filter",
+            [(n, _modulation("filter", [("filter", v)])) for n, v in _paired(children)],
+        )
 
     @staticmethod
     def instrument(children):
-        values = dict(_values(children)[0])
+        fields, values = _values(children)[0], {}
+        for key, value in fields:
+            if key.rpartition(".")[2] not in ("pw", "filter", "freq"):
+                values[key] = value
         for kind in ("pw", "filter", "freq"):
-            fields = [(k, values.pop(k)) for k in list(values) if k.rpartition(".")[2] == kind]
-            if fields:
-                values[kind] = tuple(fields) if kind == "freq" else _modulation(kind, fields, True)
+            own = [(k, v) for k, v in fields if k.rpartition(".")[2] == kind]
+            if own:
+                values[kind] = tuple(own) if kind == "freq" else _modulation(kind, own, True)
         return Instrument(**values)
 
     @staticmethod
@@ -471,47 +450,11 @@ class ToDocument(Nodes):
         return _values(children)[0]
 
     @staticmethod
-    def bound(children):
-        expr, bag = children
-        return Expr(expr.node, tuple(bag.items()))
-
-    @staticmethod
-    def ins_fn(children):
-        """``mod: NAME`` and its parameter bag as ``{fn: NAME, p0: the bag}``, the instrument's
-        ``restart`` where it has no modulator, and either where the two share an instrument."""
-        values = _values(children)
-        name = next((v for v in values if not isinstance(v, dict)), None)
-        if name is None:
-            return next((c for c in values if isinstance(c, dict)), {})
-        bag = next((c for c in values if isinstance(c, dict) and "restart" not in c), {})
-        rest = next((c for c in values if isinstance(c, dict) and "restart" in c), {})
-        return {"fn": name, "p0": bag, **rest}
-
-    @staticmethod
-    def param_bag(children):
-        return dict(_values(children))
-
-    @staticmethod
-    def pname_val(children):
-        name, value = _values(children)
-        return str(name), value
-
-    @staticmethod
-    def pname_list(children):
-        return list(_values(children))
-
-    @staticmethod
-    def cmd_set(children):
-        """The event's ``!set`` writes, ``{key: value}``, into a one ``set`` command."""
-        flat = [c for c in _values(children) if not isinstance(c, dict)]
-        rest = next((c for c in children if isinstance(c, dict)), {})
-        bag = dict(zip(flat[::2], flat[1::2]))
-        return {"set": bag, **rest} if bag else rest
-
-    @staticmethod
     def row_(children):
-        keys = dict(*_values(children))
-        return Row(keys.pop("wait", 0), keys.pop("hold", 1), tuple(keys.items()))
+        keys = _values(children)[0] if children else ()
+        timing = dict(k for k in keys if k[0] in ("wait", "hold"))
+        rest = tuple(k for k in keys if k[0] not in ("wait", "hold"))
+        return Row(timing.get("wait", 0), timing.get("hold", 1), rest)
 
     @staticmethod
     def ctrl_value(children):
@@ -541,12 +484,6 @@ class ToDocument(Nodes):
         return ("remove", mask) if "-" in words else ("mask", mask)
 
     @staticmethod
-    def program_name(children):
-        """A program's name, a call, or a call after its kind as ``(kind, call)``."""
-        values = _values(children)
-        return tuple(values) if len(values) > 1 else values[0]
-
-    @staticmethod
     def run_program(children):
         """An inline program after its kind, ``(kind, Program)``."""
         return tuple(_values(children))
@@ -562,16 +499,11 @@ class ToDocument(Nodes):
         ins = rest.pop(0) if rest and isinstance(rest[0], (str, Instrument)) else None
         commands, keep_pw, keep_filter = rest[0], rest[1], rest[2]
         steps = rest[3] if len(rest) > 3 else 1
-        return Event(note, ins, tuple(commands.items()), keep_pw, keep_filter, steps)
-
-    @staticmethod
-    def cmd_filter(children):
-        rest = next((c for c in children if isinstance(c, dict)), {})
-        return {"filter": NONE, **rest} if _words(children) else rest
+        return Event(note, ins, tuple(commands), keep_pw, keep_filter, steps)
 
     @staticmethod
     def cmd_legato(children):
-        return {"legato": True} if children else {}
+        return _Chain([("legato", True)] if children else [])
 
     @staticmethod
     def keep_pw(children):
@@ -593,20 +525,19 @@ class ToDocument(Nodes):
 
 
 def _check(records: dict, state: dict) -> tuple[dict, dict]:
-    """The templates of the ``mod`` records keyed by name or signature, by name, and the
-    ``{name: parameters}`` of those keyed by a signature, checked: no code template's label
-    names a state variable of ``state``, and a signature declares what its body reads, no state
-    variable among them."""
+    """The templates of the ``mod`` records by name and their ``{name: parameters}``, checked:
+    no code template's label names a state variable of ``state``, and a signature declares
+    what its body reads, no state variable among them."""
     names = {n for variables in state.values() for n, _ in variables}
     templates, signatures = {}, {}
     for key, template in records.items():
         if isinstance(template, Code):
             check(template.statements, names)
-        if "(" in key:
-            used = params(template.statements) if isinstance(template, Code) else None
-            used = expr_params(template.node) if used is None else used
-            key, declared = declare(key, used, names)
-            signatures[key] = declared
+            used = params(template.statements)
+        else:
+            used = expr_params(template.node)
+        key, declared = declare(key, used, names)
+        signatures[key] = declared
         if key in templates:
             raise CanonicalError(f"{key} is defined twice")
         templates[key] = template
@@ -647,18 +578,13 @@ def _slotted(cell: str):
     slot prefix or a slotted command) and value before the chain's rest."""
 
     def method(_self, children):
-        rest, own, key = {}, [], cell
-        for c in _values(children):
-            if isinstance(c, dict):
-                rest = c
-            else:
-                own.append(c)
+        (own, rest), key = _split(children), cell
         for c in children:
             if isinstance(c, Token) and c.type == "SLOT":
                 key = c + cell
             elif isinstance(c, Token) and c.type.startswith("CMD_"):
                 key = c[1:-1]
-        return {key: own[0], **rest} if own else rest
+        return _Chain([(key, own[0])] + rest) if own else rest
 
     return method
 
@@ -671,13 +597,14 @@ for _name, _method in {
     **{f"ins_{c}": _slotted(c) for c in ("pw", "filter", "freq")},
     **{f"slot_{k}": _slot_link(k) for k in ("mod", "hold", "reset")},
     **{f"state_{c}": _link(c) for c in ("freq", "pw", "cut")},
+    **{f"def_{k}": _section(k) for k in ("restart", "ins", "ctrl", "phrase")},
 }.items():
     setattr(ToDocument, _name, _method)
 
 
 def _program(value) -> bool:
     """Whether a pulse or filter field is a program or a program's name, not a binding."""
-    return isinstance(value, Program) or isinstance(value, str) and not value.startswith("x")
+    return isinstance(value, (Program, str))
 
 
 def _modulation(kind: str, fields: list, fresh: bool = False):
@@ -703,8 +630,7 @@ def read(text: str) -> Document:
         raise CanonicalError(
             f"line {exc.line} column {exc.column}: {str(exc).splitlines()[0]}"
         ) from exc
-    if tree.children[0] == "1.23":
-        programs(tree)
+    programs(tree)
     try:
         return ToDocument().transform(tree)
     except exceptions.VisitError as exc:
