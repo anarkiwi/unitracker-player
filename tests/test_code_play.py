@@ -258,6 +258,22 @@ def test_code_reads_the_note_table_at_the_document_s_clock(clock, hz, rounding):
     assert freq(play(coded, 4)) == freq(play(expressed, 4)) == freq(play(plain, 4)) == expected
 
 
+LOW = "lda nn\nclc\nadc #24\ntay\nlda F.lo-24,y\nsta v\nlda F.hi-24,y\nsta v+1\nrts"
+
+
+def test_notes_below_c0_sound_f_of_their_note():
+    """C-2 and B-1 sound F(-24) and F(-1), from code reading F.lo-24,y, as an expression and a
+    note's own frequency do."""
+    phrase, head = "[C-2.i1, B-1.i1, C0.i1, B7.i1]", CLOCK + "tempo: 1\n"
+    ins = f"{{ad: 9, sr: 240, {GATE}, freq: nt()}}"
+    coded = doc(phrase, ins=ins, head=head, mods={"nt()": block(LOW)})
+    expressed = doc(phrase, ins=f"{{ad: 9, sr: 240, {GATE}, freq: F(N)}}", head=head)
+    plain = doc(phrase, ins=f"{{ad: 9, sr: 240, {GATE}}}", head=head)
+    expected = [F(k, 985000) for k in (-24, -1, 0, 95)]
+    assert expected[0] == F(0, 985000) // 4 + 1 and expected[-1] == 0
+    assert freq(play(coded, 4)) == freq(play(expressed, 4)) == freq(play(plain, 4)) == expected
+
+
 def test_a_looping_song_with_a_code_modulator_needs_ticks(tmp_path):
     """Its loop is not proved: render and unitracker-sid refuse it without ticks."""
     text = doc(ins=f"{{ad: 9, sr: 240, {GATE}, pw: add(5)}}", ending=0, mods={"add(d)": block(ADD)})

@@ -31,7 +31,8 @@ def _holds(text: str, found, rng: random.Random) -> bool:
         ("((v - F(N)) % 65536)*(phi >= 1) + 139*(phi == 11) + F(N) - 139", (12, 1)),
         ("(v - G[N]) % 65536 + G[N]", (0, 1)),
         ("v + min(3, phi) + max(0, 4 - phi) + F(phi % 7) + G[phi % 5 - 1]", (4, 35)),
-        ("v + G[phi - 3] + F(120 - phi)", (121, 1)),
+        ("v + G[phi - 3] + F(120 - phi)", (230, 1)),
+        ("v + F(-100 - phi)", (10, 1)),
         ("v + phi", None),
         ("v * (phi // 4)", None),
     ],
@@ -57,7 +58,7 @@ def _random(rng: random.Random, depth: int) -> str:
     if form == "T":
         return f"G[{a}]"
     if form == "F":
-        return f"F(min(max({a}, -50), 200))"
+        return f"F(min(max({a}, -150), 200))"
     return f"({a}) {form} ({b})"
 
 
