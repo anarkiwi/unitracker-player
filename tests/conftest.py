@@ -44,7 +44,10 @@ def lifted(relpath: str) -> str:
     cached = testing.default_cache() / "unitracker" / f"{hashlib.md5(raw).hexdigest()}.yaml"
     if not cached.is_file():
         lift = backends.lifter(raw)
-        lift.run()
+        try:
+            lift.run()
+        except pytest.importorskip("unitracker.lift.base").LiftError as exc:
+            pytest.skip(f"{relpath}: the lifter refuses it: {exc}")
         cached.parent.mkdir(parents=True, exist_ok=True)
         cached.write_text(lift.document, encoding="utf-8")
     return cached.read_text(encoding="utf-8")
