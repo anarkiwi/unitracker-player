@@ -39,18 +39,24 @@ def _recording(parse, out: Path):
 def frames(directory: Path, out: Path, ticks: int, first: bool = False):
     """Plays each document of ``directory``, each with its definitions at their first use where
     ``first``; a refused one is recorded by its error's name."""
-    # pylint: disable-next=import-outside-toplevel
-    from unitracker_grammar.document import first_use, printed, read
     from unitracker_player import play  # pylint: disable=import-outside-toplevel
 
     result = {}
     for path in tqdm(sorted(directory.glob("*.yaml")), unit="doc"):
         try:
             text = path.read_text(encoding="utf-8")
-            result[path.stem] = play(printed(first_use(read(text))) if first else text, ticks)
+            result[path.stem] = play(_first_use(text) if first else text, ticks)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             result[path.stem] = np.frombuffer(type(exc).__name__.encode(), np.uint8)
     np.savez_compressed(out, **result)
+
+
+def _first_use(text: str) -> str:
+    """``text`` with its definitions at their first use."""
+    # pylint: disable-next=import-outside-toplevel
+    from unitracker_grammar.document import first_use, printed, read
+
+    return printed(first_use(read(text)))
 
 
 def diff(a: Path, b: Path) -> list[str]:
