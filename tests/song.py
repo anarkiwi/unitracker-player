@@ -10,12 +10,20 @@ SECTIONS = ("restart", "ins", "ctrl", "pw", "filter", "mod", "x", "phrase")
 I1 = "{ad: 9, sr: 240, ctrl: [{ctrl: 65, note: +0}, end]}"
 
 
-def doc(phrase="[C4.i1, -*3]", ins=I1, rows=("[p1]",), ending="end", head="", **defs) -> str:
+# pylint: disable-next=too-many-arguments
+def doc(
+    phrase="[C4.i1, -*3]", ins=I1, rows=("[p1]",), ending="end", head="", *, mods=None, **defs
+) -> str:
     """A parseable document: ``phrase`` and ``ins`` are p1 and i1 or a dict of names, ``defs``
-    the other sections by kind, ``rows`` the play entries of each row, ``ending`` end or a loop
-    row; one voice unless ``head`` says otherwise."""
+    the other sections by kind, ``mods`` the top-level mod section's records by signature,
+    ``rows`` the play entries of each row, ``ending`` end or a loop row; one voice unless
+    ``head`` says otherwise."""
     if "voices: " not in head:
         head = re.sub(r"^((?:clock: .*\n)?)", r"\1voices: 1\n", head)
+    if mods:
+        section = "mod:\n" + "".join(f"  {k}: {v}\n" for k, v in mods.items())
+        at = head.find("init: ")
+        head = head + section if at < 0 else head[:at] + section + head[at:]
     defs |= {"ins": ins if isinstance(ins, dict) else {"i1": ins}}
     defs |= {"phrase": phrase if isinstance(phrase, dict) else {"p1": phrase}}
     body = "".join(

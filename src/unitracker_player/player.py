@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 from tqdm import tqdm
 from unitracker_grammar import PAL_HZ
+from unitracker_grammar.code import Call
 from unitracker_grammar.expr import ExpressionError, bind
 
 from unitracker_player.code import Machine, Routine
@@ -145,8 +146,11 @@ class _Compiler:
         self.memo: dict = {}
         self.slots = self.slotted = self.machine = None
         coded = any(isinstance(t, Code) for t in doc.templates.values())
-        if head.version != VERSION and (head.state or coded):
-            raise PlayError(f"state and code templates: format {VERSION}'s")
+        self.calls = head.version == VERSION
+        if not self.calls and (head.state or coded or doc.signatures or doc.top):
+            raise PlayError(f"state, code, signatures and the mod section: format {VERSION}'s")
+        if self.calls and (doc.expressions or doc.top != doc.templates.keys()):
+            raise PlayError(f"x, a row's mod: format {VERSION} calls its mod section's templates")
         if head.version in OWNED:
             if head.slots:
                 raise PlayError(f"slots: format {SLOTTED}'s")
@@ -162,11 +166,12 @@ class _Compiler:
         if head.order is not None and (self.slots is None or sorted(head.order) != sorted(PHASES)):
             raise PlayError(f"order: format {SLOTTED}'s, each of {', '.join(PHASES)} once")
 
-    def fn(self, expr: Expr, freq: bool = False):
+    def fn(self, expr: Expr, freq: bool = False, key=None):
+        """The compiled expression, memoised by its node or by ``key``."""
         node = expr.node
         if freq and constant(node) is not None:
             node = offset(constant(node))
-        key = ("fn", ast.dump(node))
+        key = ("fn", ast.dump(node)) if key is None else key
         if key not in self.memo:
             try:
                 self.memo[key] = compile_expr(node, self.table, self.doc.tables)
@@ -266,12 +271,16 @@ class _Compiler:
         return self.memo[key]
 
     def expression(self, value, cell: str):
-        """The modulator a binding of ``cell`` names: an integer, an instance's or a template's
-        name, an expression, or a template with its parameter bag; a code template's is its
-        :class:`Routine`."""
+        """The modulator a binding of ``cell`` names: an integer, an expression, a call, or
+        before format 1.23 an instance's or a template's name or a template with its parameter
+        bag; a code template's is its :class:`Routine`."""
         freq = cell == "freq"
         if isinstance(value, int):
             return self.fn(Expr(ast.Constant(value)), freq)
+        if isinstance(value, Call):
+            return self.call(value, cell)
+        if self.calls:
+            return self._uncalled(value, cell)
         if isinstance(value, str):
             if value in self.doc.expressions:
                 return self.expression(self.doc.expressions[value], cell)
@@ -279,10 +288,7 @@ class _Compiler:
             value = Expr(ast.Name(value))
         node = value.node
         if isinstance(node, ast.Name) and node.id in self.doc.templates:
-            template = self.doc.templates[node.id]
-            if isinstance(template, Code):
-                return self.routine(node.id, template, value.bag or (), cell)
-            node = template.node
+            node = self.doc.templates[node.id].node
             value = Expr(value.node, value.bag or ())
         elif value.bag is not None:
             raise PlayError(f"{ast.unparse(node)}: a parameter bag binds a template")
@@ -295,14 +301,36 @@ class _Compiler:
                 raise PlayError(f"{ast.unparse(value.node)}: {exc}") from exc
         return self.fn(Expr(node), freq)
 
-    def routine(self, name: str, template: Code, bag: tuple, cell: str) -> Routine:
-        if not all(isinstance(x, int) for _, x in bag):
-            raise PlayError(f"{name}: a parameter is an integer")
-        key = ("code", name, cell, tuple(sorted(bag)))
+    def _uncalled(self, value, cell: str):
+        """Format 1.23's binding that is no call: an expression that names no template and has
+        no bag."""
+        node = value.node if isinstance(value, Expr) else None
+        if (
+            node is None
+            or value.bag is not None
+            or self.doc.templates.keys() & {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+        ):
+            text = value if node is None else ast.unparse(node)
+            raise PlayError(f"{text}: format {VERSION} binds a template by a call, name(1,-2)")
+        return self.fn(value, cell == "freq")
+
+    def call(self, value: Call, cell: str):
+        """The modulator of a call: its template with each declared parameter its argument,
+        memoised by the template, the cell and the arguments."""
+        if not self.calls:
+            raise PlayError(f"{value}: a call is format {VERSION}'s")
+        doc = self.doc
+        template = self.named("modulator", doc.templates, value.name)
+        declared = doc.signatures[value.name]
+        if len(declared) != len(value.args):
+            raise PlayError(f"{value}: {value.name} takes {len(declared)} argument(s)")
+        bag, key = dict(zip(declared, value.args)), ("call", value, cell)
+        if not isinstance(template, Code):
+            return self.fn(Expr(bind(template.node, bag)), cell == "freq", key)
         if key not in self.memo:
-            if self.machine is None:
-                self.machine = Machine(self.doc.tables, self.doc.header.state)
-            self.memo[key] = self.machine.compile(name, template.statements, dict(bag), cell)
+            head = self.doc.header
+            self.machine = self.machine or Machine(doc.tables, head.state, head.clock_hz or PAL_HZ)
+            self.memo[key] = self.machine.compile(value.name, template.statements, bag, cell)
         return self.memo[key]
 
     def defaults(self) -> dict:

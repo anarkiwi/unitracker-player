@@ -39,8 +39,8 @@ class _Recording(_Compiler):
 
     nodes: dict = {}
 
-    def fn(self, expr, freq: bool = False):
-        out = super().fn(expr, freq)
+    def fn(self, expr, freq: bool = False, key=None):
+        out = super().fn(expr, freq, key)
         self.nodes[id(out)] = expr.node if not freq else self._node(expr)
         return out
 

@@ -13,3 +13,4 @@ htmlcov/
 .corpus/
 .tmp/
 .tunecache/
+/out/

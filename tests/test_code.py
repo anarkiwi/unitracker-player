@@ -6,6 +6,7 @@ from jennings.disassembler import Disassembler
 from jennings.opcodes import OPCODES
 from unitracker_grammar.code import LEGAL, Imm, Label, Mem, Op
 from unitracker_grammar.code import read as statements
+from unitracker_grammar import frequency
 
 from unitracker_player import PlayError, code
 from unitracker_player.code import Machine
@@ -192,3 +193,26 @@ def test_immediates_take_a_parameter_s_low_and_high_bytes():
     src = "lda #<p\nsta v\nlda #>p\nsta v+1\nlda #p\nsta ne\nrts"
     assert fire(src, bag={"p": 0x1ABCD}) == 0xABCD
     assert fire(src, bag={"p": -2}) == 0xFFFE
+
+
+def test_the_note_table_is_laid_out_once_before_the_first_routine_naming_it():
+    """F.lo then F.hi, entry k F(k) at the machine's clock for k 0-255, only once named."""
+    machine = Machine(T1, {}, 985000)
+    routine("rts", machine)
+    assert "F.lo" not in machine.symbols
+    read_hi = routine("ldx #57\nlda F.hi,x\nsta v\nrts", machine)
+    lo = machine.symbols["F.lo"]
+    assert machine.symbols["F.hi"] == lo + 256 and lo == read_hi.start - 512
+    words = [frequency(k, 985000) for k in range(256)]
+    assert bytes(machine.image[lo : lo + 512]) == bytes(
+        [w & 0xFF for w in words] + [w >> 8 for w in words]
+    )
+    assert read_hi(0, 0, 0, 0, bytearray()) == words[57] >> 8
+    routine("lda F.lo\nsta v\nrts", machine)
+    assert machine.symbols["F.lo"] == lo
+
+
+def test_a_note_table_past_memory_is_refused():
+    machine = Machine({"T": (0,) * 0x7E01}, {})
+    with pytest.raises(PlayError, match="F: the tables and routines overflow memory"):
+        routine("lda F.lo\nrts", machine)

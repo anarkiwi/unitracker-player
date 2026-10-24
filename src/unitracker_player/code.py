@@ -4,7 +4,8 @@ modulators)."""
 
 from jennings.devices.mpu6502 import MPU
 from jennings.opcodes import ILLEGAL_OPCODES, OPCODES
-from unitracker_grammar.code import LEGAL, Imm, Label, Mem, params
+from unitracker_grammar import PAL_HZ, frequency
+from unitracker_grammar.code import LEGAL, NOTES, Imm, Label, Mem, Op, params
 
 from unitracker_player.sequencer import PlayError
 
@@ -66,9 +67,12 @@ class Machine:
     """One 6502 and its memory for a song: ``v`` (2 bytes), ``phi`` (2), ``nn``, ``ne`` and
     from :data:`STATE` the state of the routine's cell in zero page; each table's ``T.lo`` then
     ``T.hi`` from :data:`TABLES`, each ``max(256, len(T))`` bytes, 0 past the table; then the
-    routines' code. ``image`` is the memory as laid out, what every firing starts from."""
+    routines' code, the note table ``F`` (``F(k)`` at ``clock_hz`` for k 0-255) laid out as a
+    table before the first routine that names it. ``image`` is the memory as laid out, what
+    every firing starts from."""
 
-    def __init__(self, tables: dict, state: dict):
+    def __init__(self, tables: dict, state: dict, clock_hz: int = PAL_HZ):
+        self.clock_hz = clock_hz
         self.memory, self.symbols = bytearray(TOP), dict(SYMBOLS)
         self.cells, self.sizes = {}, {}
         for cell, variables in state.items():
@@ -78,18 +82,25 @@ class Machine:
             if at > 0x100:
                 raise PlayError(f"state: {cell}'s variables overflow zero page")
             self.cells[cell], self.sizes[cell] = names, at - STATE
-        at = TABLES
-        if at + sum(2 * max(256, len(values)) for values in tables.values()) > TOP:
+        self.top = TABLES
+        if self.top + sum(2 * max(256, len(values)) for values in tables.values()) > TOP:
             raise PlayError("tables: they overflow memory")
         for name, values in tables.items():
-            span = max(256, len(values))
-            for half, shift in (("lo", 0), ("hi", 8)):
-                self.symbols[f"{name}.{half}"] = at
-                self.memory[at : at + len(values)] = bytes((x >> shift) & 0xFF for x in values)
-                at += span
-        self.top = at
+            self._table(name, values)
         self.image = bytearray(self.memory)
         self.mpu = MPU(self.memory, TABLES)
+
+    def _table(self, name: str, values) -> None:
+        """Lays out table ``name`` at the top: ``name.lo`` then ``name.hi``, each
+        ``max(256, len(values))`` bytes."""
+        span, at = max(256, len(values)), self.top
+        if at + 2 * span > TOP:
+            raise PlayError(f"{name}: the tables and routines overflow memory")
+        for half, shift in (("lo", 0), ("hi", 8)):
+            self.symbols[f"{name}.{half}"] = at
+            self.memory[at : at + len(values)] = bytes((x >> shift) & 0xFF for x in values)
+            at += span
+        self.top = at
 
     def owner(self, symbol: str) -> str | None:
         """The cell whose state variable ``symbol`` is, else None."""
@@ -114,6 +125,13 @@ class Machine:
         if set(names) != set(bag):
             missing, extra = sorted(set(names) - set(bag)), sorted(set(bag) - set(names))
             raise PlayError(f"{name}: parameters: missing {missing}, unknown {extra}")
+        if NOTES[0] not in self.symbols and any(
+            isinstance(s, Op) and isinstance(s.operand, Mem) and s.operand.symbol in NOTES
+            for s in statements
+        ):
+            start = self.top
+            self._table("F", [frequency(k, self.clock_hz) for k in range(256)])
+            self.image[start : self.top] = self.memory[start : self.top]
         ops, labels, end = self._layout(name, statements, cell)
         code, start = _emit(name, ops, labels, bag, self.top), self.top
         self.memory[start:end] = self.image[start:end] = code

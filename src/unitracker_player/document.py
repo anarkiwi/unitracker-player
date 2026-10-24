@@ -8,8 +8,9 @@ import ast
 
 from lark import Token, exceptions
 from unitracker_grammar import CanonicalError, parser
-from unitracker_grammar.code import Statements, check
+from unitracker_grammar.code import Statements, call, check, declare, params, signature
 from unitracker_grammar.expr import Nodes
+from unitracker_grammar.expr import params as expr_params
 
 NONE = None
 HOLD = "hold"
@@ -40,6 +41,8 @@ _VALUES = {
     "HOLD_EVENT",
     "CELL",
     "PHASE",
+    "SIGNATURE",
+    "CALL",
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
@@ -71,11 +74,11 @@ class Code:
 
 @dataclass(frozen=True)
 class Slot:
-    """A cell's modulator slot: its name, its default binding's name, and the
+    """A cell's modulator slot: its name, its default binding (a name or a Call), and the
     ``((event, k), ...)`` it holds and resets on."""
 
     name: str
-    mod: str | None = None
+    mod: object = None
     hold: tuple = ()
     reset: tuple = ()
 
@@ -160,7 +163,8 @@ class Header:
 class Document:
     """A whole document: the header, its tables and init row, every definition by name and the
     timeline's rows of play entries with its ending (``loop`` None for ``end``); ``templates``
-    the ``mod`` records, each an Expr or a Code."""
+    the ``mod`` records by name, each an Expr or a Code, ``signatures`` ``{name: parameters}``
+    of those keyed by a signature and ``top`` the names of the top-level ``mod`` section's."""
 
     header: Header
     tables: dict
@@ -172,11 +176,15 @@ class Document:
     timeline: tuple
     loop: int | None
     templates: dict = field(default_factory=dict)
+    signatures: dict = field(default_factory=dict)
+    top: frozenset = frozenset()
 
 
 def _tok(token: Token):
     if token.type in ("INT", "SIGNED"):
         return int(token)
+    if token.type == "CALL":
+        return call(token)
     return NONE if token.type == "NONE" else str(token)
 
 
@@ -228,20 +236,22 @@ class ToDocument(Nodes):
             tag = item[0]
             if isinstance(item, str):
                 head["version"] = item
-            elif tag == "row":
+            elif tag in ("row", "mods"):
                 for kind, entries in item[1]:
                     for name, value in entries:
                         if name in defs[kind]:
                             raise CanonicalError(f"{name} is defined twice")
                         defs[kind][name] = value
-                timeline.append(item[2])
+                if tag == "row":
+                    timeline.append(item[2])
+                else:
+                    head["top"] = frozenset(signature(n)[0] for n, _ in item[1][0][1])
             else:
                 head[tag] = item[1]
-        clock = head.pop("clock", (None, None))
         header = Header(
             head.pop("version"),
             head.pop("meta"),
-            *clock,
+            *head.pop("clock", (None, None)),
             head.pop("voices", 3),
             head.pop("tempo", (6, 6)),
             head.pop("hold", {}),
@@ -249,7 +259,7 @@ class ToDocument(Nodes):
             head.pop("order", None),
             head.pop("state", {}),
         )
-        _check(defs["mod"], header.state)
+        templates, signatures = _check(defs["mod"], header.state)
         programs = {**defs["restart"], **defs["ctrl"], **defs["pw"], **defs["filter"]}
         return Document(
             header,
@@ -261,7 +271,9 @@ class ToDocument(Nodes):
             defs["phrase"],
             tuple(timeline),
             head["ending"],
-            defs["mod"],
+            templates,
+            signatures,
+            head.pop("top", frozenset()),
         )
 
     @staticmethod
@@ -373,8 +385,13 @@ class ToDocument(Nodes):
         return Play("cont" if _words(children) == ["~"] else "end")
 
     @staticmethod
+    def mods(children):
+        return ("mods", [ToDocument.section(children)])
+
+    @staticmethod
     def section(children):
-        kind = {"name": "mod"}.get(children[0].type.lower(), children[0].type.lower())
+        kind = children[0].type.lower()
+        kind = "mod" if kind in ("name", "signature") else kind
         entries = []
         for c in _values(children):
             if isinstance(c, str):
@@ -523,12 +540,25 @@ class ToDocument(Nodes):
     code_imm, code_mem = Statements.code_imm, Statements.code_mem
 
 
-def _check(templates: dict, state: dict):
-    """Checks the code ``templates``: none's label names a state variable of ``state``."""
+def _check(records: dict, state: dict) -> tuple[dict, dict]:
+    """The templates of the ``mod`` records keyed by name or signature, by name, and the
+    ``{name: parameters}`` of those keyed by a signature, checked: no code template's label
+    names a state variable of ``state``, and a signature declares what its body reads, no state
+    variable among them."""
     names = {n for variables in state.values() for n, _ in variables}
-    for template in templates.values():
+    templates, signatures = {}, {}
+    for key, template in records.items():
         if isinstance(template, Code):
             check(template.statements, names)
+        if "(" in key:
+            used = params(template.statements) if isinstance(template, Code) else None
+            used = expr_params(template.node) if used is None else used
+            key, declared = declare(key, used, names)
+            signatures[key] = declared
+        if key in templates:
+            raise CanonicalError(f"{key} is defined twice")
+        templates[key] = template
+    return templates, signatures
 
 
 def _slot_link(key):
@@ -537,7 +567,9 @@ def _slot_link(key):
     def method(_self, children):
         own = [c for c in children if not isinstance(c, dict)]
         rest = next((c for c in children if isinstance(c, dict)), {})
-        return {key: str(own[0]) if key == "mod" else own[0], **rest} if own else rest
+        if own and key == "mod":
+            own[0] = call(own[0]) if own[0].type == "CALL" else str(own[0])
+        return {key: own[0], **rest} if own else rest
 
     return method
 

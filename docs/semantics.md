@@ -18,6 +18,7 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 | `order` | the phases of a tick in the order they run (see [Order within a tick](#order-within-a-tick)); refused before `1.22` |
 | `state` | per cell, the state variables code modulators read and write (see [Code modulators](#code-modulators)); refused before `1.23` |
 | `tables` | the tables expressions read as `T[k]` and code as `T.lo` and `T.hi` |
+| `mod` | format 1.23's templates, each keyed by its signature (see [Definitions](#definitions)); refused before `1.23` |
 | `init` | one event per voice (see [Init](#init)); a count other than `voices` is refused |
 
 ## Initial state
@@ -42,6 +43,14 @@ an expression, or a template's name with the bag `{name: integer, ...}` naming e
 parameters and no other, which is the template with each parameter its integer. An expression
 outside a template that reads a parameter is refused. A `mod` record that is a code block is a
 code template (see [Code modulators](#code-modulators)); one is refused before `1.23`.
+
+In `1.23` the templates are the top-level `mod` section's, after `tables` (records at 2 spaces,
+a code block's lines at 4), and each record's key is its signature: `vib(l, c, s)`, or `note()`
+for a template of no parameter. Its parameters are distinct lowercase names, none a code symbol
+(`v phi nn ne a x y`) nor a state variable, and exactly the names the body reads as parameters
+(an expression's parameters, a code block's immediate names); the declaration fixes their
+order. An `x` section, a `mod` section in a row's `def`, and a signature or a call before
+`1.23` are refused.
 
 ## Time
 
@@ -197,13 +206,18 @@ refused. A binding names its modulator:
 
 | binding | modulator |
 |---|---|
-| `x3` | the instance `x3` |
-| `note` | the template `note`, which reads no parameter |
-| `porta {s: 3}` | the template `porta` with its bag, as an instance (not in a command) |
-| `v + 40`, `512` | the expression (not in a command, which takes an integer and an `x` name) |
+| `x3` | the instance `x3` (before `1.23`) |
+| `note` | the template `note`, which reads no parameter (before `1.23`) |
+| `porta {s: 3}` | the template `porta` with its bag, as an instance (not in a command; before `1.23`) |
+| `vib(0,-4,32)`, `note()` | `1.23`'s call: the template with each declared parameter, in order, its integer argument; a count other than the declared one is refused |
+| `v + 40`, `512` | the expression (not in a command, which takes an integer and an `x` name or a call) |
+
+In `1.23` a binding is a call, an integer or an expression that names no template; a template's
+name, a bag and an `x` name are refused. A slot's default (`slots: {pw: {a: {mod: note()}}}`) is
+a binding as any other.
 
 A command or a program row binding a slot to the modulator it is bound to (the same expression
-with the same parameters) keeps its φ; any other binding, a slot's first and a binding of a
+with the same parameters; in `1.23` the same template with the same arguments) keeps its φ; any other binding, a slot's first and a binding of a
 note's instrument's fields start φ at 0 on that tick. A binding lasts
 until its slot is bound again or stopped (see [Stops](#stops)). The voice that binds a slot of the
 cutoff is the voice whose notes and events it reads.
@@ -228,7 +242,9 @@ define is refused.
 ## Code modulators
 
 A code template is an NMOS 6502 routine (`unitracker_grammar.code`) fired where an expression
-would be; its parameters are its immediates, bound by a bag as an expression template's. Each
+would be; its parameters are its immediates, bound by a call as an expression template's. Each
+call, template and cell is assembled once (`vib(0,4,32)` on `freq` and on `pw` are two
+routines). Each
 voice has, per cell of the `state` line, its own copy of the cell's variables, and the song one
 copy of the cutoff's; every byte is 0 at tick 0, and only code reads and writes it. A firing runs
 on the copy of the voice that bound the slot (the one copy for `cut`), so the state persists
@@ -241,13 +257,15 @@ across firings, slots, bindings and notes; φ restarts as for any modulator, the
 | `nn`, `ne` | 1 each | `N & 255`, `n & 255` | discarded |
 | a state variable of the slot's cell | its size | the voice's copy | stored back to it |
 | `T.lo`, `T.hi` | per entry | bits 0-7, 8-15 of entry `k` at `+k`; 0 past the table | discarded |
+| `F.lo`, `F.hi` | 256 each | bits 0-7, 8-15 of `F(k)` at `clock_hz` at `+k`, `unitracker_grammar.frequency(k, clock_hz)` for k 0-255 | discarded |
 
 At entry A, X and Y are 0, the flags are clear but I and the stack is empty. The routine runs
 from its first statement to an `rts` on an empty stack; every other write is discarded at exit.
 The player lays `v`, `phi`, `nn`, `ne` and the state in zero page, then the tables and the code
-in one 64K memory per song, and picks zero page or absolute for each memory operand. Refused: a
+in one 64K memory per song (the note table `F` as a table before the first routine that names
+it, and only then), and picks zero page or absolute for each memory operand. Refused: a
 symbol that is none of these or a state variable of another cell than the binding's, a branch out
-of range, a bag that names other than the routine's parameters, more than 4096 instructions in a
+of range, more than 4096 instructions in a
 firing (the last `rts` among them), a pull or `rts` on an empty stack, a 257th byte pushed, and
 running outside the routine's code. A looping song with a code modulator has no proved loop:
 `unitracker-sid` needs `--ticks` for it.
