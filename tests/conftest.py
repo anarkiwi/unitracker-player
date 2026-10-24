@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from unitracker_grammar.document import printed, read
 
 for _var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
     os.environ.setdefault(_var, "2")
@@ -34,7 +35,7 @@ def toolchain():
 
 def lifted(relpath: str) -> str:
     """The generic document of HVSC tune ``relpath``, lifted by unitracker and cached by the
-    tune's md5 in pysidtracker's cache."""
+    tune's md5 in pysidtracker's cache, in its one canonical text."""
     testing = pytest.importorskip("pysidtracker.testing")
     backends = pytest.importorskip("unitracker.lift.backends")
     path = testing.resolve_tune(relpath)
@@ -50,4 +51,4 @@ def lifted(relpath: str) -> str:
             pytest.skip(f"{relpath}: the lifter refuses it: {exc}")
         cached.parent.mkdir(parents=True, exist_ok=True)
         cached.write_text(lift.document, encoding="utf-8")
-    return cached.read_text(encoding="utf-8")
+    return printed(read(cached.read_text(encoding="utf-8")))

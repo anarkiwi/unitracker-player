@@ -3,7 +3,6 @@
 import re
 
 import numpy as np
-from unitracker_grammar import parse
 from unitracker_grammar.document import Section, printed, read, replace
 
 HEAD = "unitracker: 1.21\nmeta: {title: T}\n"
@@ -19,7 +18,7 @@ def doc(
     """A parseable document: ``phrase`` and ``ins`` are p1 and i1 or a dict of names, ``defs``
     the other sections by kind, ``mods`` the top-level mod section's records by signature,
     ``rows`` the play entries of each row, ``ending`` end or a loop row; one voice unless
-    ``head`` says otherwise."""
+    ``head`` says otherwise; in its one canonical text."""
     if "voices: " not in head:
         head = re.sub(r"^((?:clock: .*\n)?)", r"\1voices: 1\n", head)
     if mods:
@@ -36,9 +35,7 @@ def doc(
     first, *rest = rows
     tail = "".join(f"  - play: {r}\n" for r in rest)
     end = "  - end\n" if ending == "end" else f"  - {{loop: {ending}}}\n"
-    text = f"{HEAD}{head}song:\n  - def:\n{body}    play: {first}\n{tail}{end}"
-    parse(text)
-    return text
+    return printed(read(f"{HEAD}{head}song:\n  - def:\n{body}    play: {first}\n{tail}{end}"))
 
 
 def word(frames: np.ndarray, lo: int) -> np.ndarray:
@@ -78,4 +75,4 @@ def toplevel(text: str) -> str:
     defs = {kind: list(dict(model.records(kind)).items()) for kind in TOP}
     rows = [replace(r, defs=tuple(s for s in r.defs if s.kind not in TOP)) for r in model.rows]
     sections = tuple(Section(kind, tuple(records)) for kind, records in defs.items() if records)
-    return printed(replace(model, defs=sections, rows=tuple(rows), layout=()))
+    return printed(replace(model, defs=sections, rows=tuple(rows)))

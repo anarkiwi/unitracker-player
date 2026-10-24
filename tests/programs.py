@@ -10,6 +10,7 @@ import re
 from inline import parser
 from lark import Token, Tree
 from unitracker_grammar import code as C
+from unitracker_grammar.document import printed, read
 from unitracker_grammar import expr as E
 
 NAMED = {"RESTART": "restart", "CTRL": "ctrl", "PW": "pw", "FILTER": "filter"}
@@ -139,7 +140,7 @@ class _Expander:
 
 def expanded(text: str) -> str:
     """``text`` with each call of a program template a named program's name (see the module)."""
-    return _Expander(text).document()
+    return printed(read(_Expander(text).document()))
 
 
 TOP = ("restart", "ins", "ctrl", "pw", "filter")
@@ -237,4 +238,4 @@ def templated(text: str) -> str:
         declared, args = _template(body, inner)
         edits.append((*span, f"t{k}({args})"))
         lines.setdefault(kind, []).append(f"  t{k}({declared}): {_edited(text, *span, inner)}\n")
-    return _edited(text, 0, len(text), edits + refs + _placed(text, tree, lines))
+    return printed(read(_edited(text, 0, len(text), edits + refs + _placed(text, tree, lines))))

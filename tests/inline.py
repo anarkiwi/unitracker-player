@@ -8,6 +8,7 @@ import functools
 from lark import Lark, Token, Tree
 from unitracker_grammar import GRAMMAR
 from unitracker_grammar import code as C
+from unitracker_grammar.document import printed, read
 from unitracker_grammar import expr as E
 
 DEFINED = {"INS", "CTRL", "PW", "FILTER", "RESTART", "PHRASE", "X"}
@@ -125,10 +126,11 @@ def _byte(value: int, byte: str) -> int:
 
 
 def inlined(text: str) -> str:
-    """``text`` with every definition inline at its use (see the module)."""
+    """``text`` with every definition inline at its use (see the module), in its one canonical
+    text."""
     doc = _Inliner(text)
     out, at = [], 0
     for start, end, replacement in sorted(doc.edits()):
         out += [doc.expand(at, start), replacement]
         at = end
-    return "".join(out) + doc.expand(at, len(text))
+    return printed(read("".join(out) + doc.expand(at, len(text))))
