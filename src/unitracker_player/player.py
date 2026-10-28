@@ -21,6 +21,7 @@ from unitracker_player.compiler import (
     REGISTERS,
     RESET,
     SLOT_PHASES,
+    SLOTS,
     CEvent,
     CInstrument,
     CProgram,
@@ -46,13 +47,13 @@ class _Voice:  # pylint: disable=too-many-instance-attributes
     ``pw_mods`` hold its cells' modulator slots, each modulator ``[fn, phi, voice, slot.cell, by
     command, once]``."""
 
-    def __init__(self, widths: dict, state: dict):
+    def __init__(self, widths: dict, state: dict, slots: int):
         self.freq = self.pw = self.ctrl = self.mask = self.gate = self.ad = self.sr = 0
         self.note = self.absolute = None
         self.relative = 0
         self.freq_mods, self.pw_mods = [None] * widths["freq"], [None] * widths["pw"]
         self.freq_hold = False
-        self.slots = [[None, 0, 0] for _ in range(3)]
+        self.slots = [[None, 0, 0] for _ in range(slots)]
         self.state = {cell: bytearray(state.get(cell, 0)) for cell in ("freq", "pw")}
 
     @property
@@ -74,7 +75,8 @@ class Player:  # pylint: disable=too-many-instance-attributes
         self.tick = 0
         self.regs = [0] * REGISTERS
         widths = {cell: len(n) for cell, n in song.slots.items()}
-        self.voices = [_Voice(widths, song.state) for _ in range(song.voices)]
+        self.voices = [_Voice(widths, song.state, len(song.kinds)) for _ in range(song.voices)]
+        self._layers = {k: [s for s, own in enumerate(song.kinds) if own == k] for k in SLOTS}
         self.cut_mods = [None] * widths["cut"]
         self.cut_state = bytearray(song.state.get("cut", 0))
         self.cut = self.res = self.route = self.mode = self.vol = 0
@@ -125,7 +127,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
         if event.ins is not None:
             self._ins[v] = event.ins
         ins = self._ins[v]
-        if ins is None and any(k == "run" and val is not None for k, val in event.ops):
+        if ins is None and any(k == "run" and val[1] is not None for k, val in event.ops):
             raise PlayError(f"voice {v + 1}: !run at tick {t} on a voice with no instrument")
         if not ins or not ins.restart:
             return [(t, (v, event, transpose, ins, None, None))]
@@ -145,8 +147,8 @@ class Player:  # pylint: disable=too-many-instance-attributes
             return [(t, (v, event, transpose, ins, None, None))]
         parts = [
             (ahead[0][1], "gate", event.note),
-            (ahead[-1][1], "ops", not all(map(_chip, event.ops))),
-            (0, "chip", any(map(_chip, event.ops))),
+            (ahead[-1][1], "ops", not all(map(self._chip, event.ops))),
+            (0, "chip", any(map(self._chip, event.ops))),
         ]
         return [
             (max(t - before, 0), (v, event, transpose, ins, None, part))
@@ -195,8 +197,9 @@ class Player:  # pylint: disable=too-many-instance-attributes
                 self._cells = arg
                 self._fire()
             elif phase in SLOT_PHASES:
-                for v in range(len(self.voices)):
-                    self._run_slot(v, SLOT_PHASES[phase], t)
+                for slot in self._layers[SLOT_PHASES[phase]]:
+                    for v in range(len(self.voices)):
+                        self._run_slot(v, slot, t)
             else:
                 self._voice_events(t, phase == "read", rows, events)
         for ticks in self._held.values():
@@ -238,13 +241,21 @@ class Player:  # pylint: disable=too-many-instance-attributes
         regs[24] = self.mode | self.vol
         return list(regs)
 
-    def _start(self, v: int, kind: int, prog: CProgram | None, t: int):
+    def _start(self, v: int, slot: int, prog: CProgram | None, t: int):
+        """Starts ``prog`` in program slot ``slot``, or with None stops it; a filter program
+        stops the same layer of every other voice."""
         running = prog is not None and bool(prog.rows)
-        if running and kind == FILTER:
+        if running and self.song.kinds[slot] == FILTER:
             for other in range(len(self.voices)):
                 if other != v:
-                    self._stop_filter(other)
-        self.voices[v].slots[kind] = [prog, 0, t + prog.rows[0][0]] if running else [None, 0, 0]
+                    self._stop_filter(other, (slot,))
+        self.voices[v].slots[slot] = [prog, 0, t + prog.rows[0][0]] if running else [None, 0, 0]
+
+    def _chip(self, op: tuple) -> bool:
+        """Whether a command sets the filter or the volume: of :data:`CHIP`, or a filter
+        program's ``!run``."""
+        key, value = op
+        return key in CHIP or key == "run" and self.song.kinds[value[0]] == FILTER
 
     def _mods(self, v: int, cell: str) -> list:
         return self.cut_mods if cell == "cut" else getattr(self.voices[v], cell + "_mods")
@@ -273,8 +284,9 @@ class Player:  # pylint: disable=too-many-instance-attributes
         if cell == "freq":
             self.voices[v].freq_hold = False
 
-    def _stop_filter(self, v: int):
-        self.voices[v].slots[FILTER][0] = None
+    def _stop_filter(self, v: int, slots):
+        for slot in slots:
+            self.voices[v].slots[slot][0] = None
         self._end(v, "cut", range(len(self.cut_mods)), False)
 
     def _stop(self, v: int, cell: str, value, ends: tuple):
@@ -291,15 +303,17 @@ class Player:  # pylint: disable=too-many-instance-attributes
         self._end(v, cell, ends, None, shared)
         if value == HOLD:
             if cell == "pw":
-                voice.slots[PULSE][0] = None
+                for slot in self._layers[PULSE]:
+                    voice.slots[slot][0] = None
             elif cell == "cut":
                 for u in range(len(self.voices)) if shared else (v,):
-                    self._stop_filter(u)
+                    self._stop_filter(u, self._layers[FILTER])
         if cell == "freq":
             voice.freq_hold = value == HOLD
 
     def _run_slot(self, v: int, kind: int, t: int):
-        slots, seen = self.voices[v].slots, set()
+        """Runs the rows of voice ``v``'s program slot ``kind`` due by tick ``t``."""
+        slots, seen, control = self.voices[v].slots, set(), self.song.kinds[kind] == CONTROL
         while (slot := slots[kind])[0] is not None and slot[2] <= t:
             prog, index = slot[0], slot[1]
             if (id(prog), index) in seen:
@@ -307,7 +321,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
             seen.add((id(prog), index))
             _, hold, ops = prog.rows[index]
             self._apply(v, ops, t, False, prog.fresh)
-            if kind == CONTROL:
+            if control:
                 keys = {key for key, _ in ops}
                 events = {"row." + key for key in keys}
                 if keys - {"ctrl", "gate"}:
@@ -393,7 +407,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
         elif event.note is not None and part not in ("ops", "chip"):
             voice.gate = 1 if event.note == "on" else 0
         for key, value in event.ops if part != "gate" else ():
-            if part is None or (part == "chip") == _chip((key, value)):
+            if part is None or (part == "chip") == self._chip((key, value)):
                 self._command(v, key, value, t)
 
     def _instrument(self, v: int, ins: CInstrument, event: CEvent, t: int):
@@ -408,6 +422,10 @@ class Player:  # pylint: disable=too-many-instance-attributes
             self._start(v, PULSE, ins.pw, t)
         if ins.filter is not None and not event.keep_filter:
             self._start(v, FILTER, ins.filter, t)
+        keep = {PULSE: event.keep_pw, FILTER: event.keep_filter}
+        for slot, prog in ins.layers:
+            if not keep.get(self.song.kinds[slot]):
+                self._start(v, slot, prog, t)
         for value in ins.freq or ():
             if isinstance(value[0], int):
                 self._set(v, "freq", *value, False, fresh=True)
@@ -418,10 +436,7 @@ class Player:  # pylint: disable=too-many-instance-attributes
     def _command(self, v: int, key: str, value, t: int):
         voice = self.voices[v]
         if key == "run":
-            if value is None:
-                voice.slots[CONTROL][0] = None
-            else:
-                self._start(v, value[0], value[1], t)
+            self._start(v, value[0], value[1], t)
         elif key in CELLS:
             if isinstance(value[0], int):
                 self._set(v, key, *value, True)
@@ -510,13 +525,6 @@ def _with_envelope(row: tuple, ops: tuple) -> tuple:
     wait, hold, keys = row
     first = ((k, (v, None) if k == "ctrl" else v) for k, v in ops if k in ENVELOPE)
     return wait, hold, keys + tuple(first)
-
-
-def _chip(op: tuple) -> bool:
-    """Whether a command sets the filter or the volume: of :data:`CHIP`, or a filter program's
-    ``!run``."""
-    key, value = op
-    return key in CHIP or key == "run" and value is not None and value[0] == FILTER
 
 
 def play(source, ticks: int | None = None, progress: bool = False) -> np.ndarray:

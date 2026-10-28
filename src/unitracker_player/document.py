@@ -49,8 +49,20 @@ _VALUES = {
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
-_HEADER = ("rounding", "voices", "tempo", "slots", "order", "state", "regs", "lag", "global_cells")
+_HEADER = (
+    "rounding",
+    "voices",
+    "tempo",
+    "slots",
+    "layers",
+    "order",
+    "state",
+    "regs",
+    "lag",
+    "global_cells",
+)
 KINDS = ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase")
+LAYERED = ("ctrl", "pw", "filter")
 _CELL = {"pw": "pw", "filter": "cut", "cut": "cut", "freq": "freq"}
 
 
@@ -124,10 +136,10 @@ class Program:
 
 
 @dataclass(frozen=True)
-class Instrument:
-    """An instrument's fields; a program field holds a name, a call or a program, ``freq`` its
-    ``(key, binding)`` fields, ``key`` ``freq`` or ``slot.freq`` and a binding a modulator or
-    None."""
+class Instrument:  # pylint: disable=too-many-instance-attributes
+    """An instrument's fields; a program field holds a name, a call or a program, its kind's
+    first layer's, ``freq`` its ``(key, binding)`` fields, ``key`` ``freq`` or ``slot.freq`` and
+    a binding a modulator or None; ``layers`` ``(kind, layer, program)`` of the other layers."""
 
     ad: int | None = None
     sr: int | None = None
@@ -136,6 +148,7 @@ class Instrument:
     filter: str | Program | None = None
     freq: tuple = ()
     restart: str | Program | None = None
+    layers: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -166,7 +179,8 @@ class Header:
     """The header lines, with their defaults; ``slots`` ``{cell: (Slot, ...)}``, ``order`` the
     phases of a tick or None, ``state`` ``{cell: ((name, size), ...)}``, ``regs`` the registers
     before tick 0 or None, ``rounding`` the note table's, ``round`` or ``floor``, ``lag`` the
-    ticks the registers are written late and ``global_cells`` the cells the song owns."""
+    ticks the registers are written late, ``global_cells`` the cells the song owns and
+    ``layers`` ``{kind: layer names}``."""
 
     meta: dict = field(default_factory=dict)
     cycles_per_tick: int | None = None
@@ -180,6 +194,7 @@ class Header:
     rounding: str = "round"
     lag: int = 0
     global_cells: tuple = ()
+    layers: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -276,6 +291,10 @@ class ToDocument(Nodes):
 
     # pylint: disable=too-many-public-methods,missing-function-docstring
 
+    def __init__(self, layers: dict | None = None):
+        super().__init__()
+        self.layered = layers or {}
+
     def start(self, children):
         head, defs, timeline = {"tables": {}, "init": None}, {k: {} for k in KINDS}, []
         for tag, value in _values(children):
@@ -341,6 +360,14 @@ class ToDocument(Nodes):
         return tuple(
             (str(name), int(k or 0)) for name, _, k in (e.partition("-") for e in children)
         )
+
+    @staticmethod
+    def layers(children):
+        return ("layers", dict(children[0]))
+
+    @staticmethod
+    def layer_names(children):
+        return tuple(_values(children))
 
     @staticmethod
     def order(children):
@@ -437,17 +464,27 @@ class ToDocument(Nodes):
     def def_filter(children):
         return ("filter", [(n, _record("filter", v)) for n, v in _paired(children)])
 
-    @staticmethod
-    def instrument(children):
-        fields, values = _values(children)[0], {}
+    def instrument(self, children):
+        fields, values, layered = _values(children)[0], {"layers": []}, {}
         for key, value in fields:
-            if key.rpartition(".")[2] not in ("pw", "filter", "freq"):
+            prefix, _, kind = key.rpartition(".")
+            if kind in LAYERED:
+                names = self.layered.get(kind, ())
+                if kind == "ctrl" or prefix in names:
+                    key, prefix = kind, "" if prefix in names[:1] else prefix
+                layered.setdefault((kind, "" if key != kind else prefix), []).append((key, value))
+            elif kind != "freq":
                 values[key] = value
-        for kind in ("pw", "filter", "freq"):
-            own = [(k, v) for k, v in fields if k.rpartition(".")[2] == kind]
-            if own:
-                values[kind] = tuple(own) if kind == "freq" else _modulation(kind, own, True)
-        return Instrument(**values)
+        for (kind, layer), own in layered.items():
+            if kind == "ctrl" and len(own) > 1:
+                raise CanonicalError(f"{layer or kind}: an instrument starts a layer twice")
+            program = own[0][1] if kind == "ctrl" else _modulation(kind, own, True)
+            if layer:
+                values["layers"].append((kind, layer, program))
+            else:
+                values[kind] = program
+        freq = tuple((k, v) for k, v in fields if k.rpartition(".")[2] == "freq")
+        return Instrument(**values | {"freq": freq, "layers": tuple(values["layers"])})
 
     @staticmethod
     def program(children):
@@ -564,9 +601,9 @@ def _slotted(cell: str):
 
 
 for _name, _method in {
-    **_chain("row", "wait hold gate note ad sr res mode run filter vol".split()),
-    **_chain("ins", "ad sr ctrl restart".split()),
-    **_chain("cmd", "run ad sr ctrl res mode vol tempo vtempo".split()),
+    **_chain("row", "wait hold gate note ad sr res mode filter vol".split()),
+    **_chain("ins", "ad sr restart".split()),
+    **_chain("cmd", "ad sr ctrl res mode vol tempo vtempo".split()),
     "row_ctrl": _link("ctrl", lambda c: (c, None)),
     "row_mask": _link("ctrl", lambda m: (None, m)),
     "row_route": _link("route", lambda m: ("mask", m)),
@@ -574,7 +611,9 @@ for _name, _method in {
     "row_route_off": _link("route", lambda m: ("remove", m)),
     "cmd_route": _link("route", lambda m: ("mask", m)),
     **{f"{chain}_{c}": _slotted(c) for chain in ("row", "cmd") for c in ("pw", "cut", "freq")},
-    **{f"ins_{c}": _slotted(c) for c in ("pw", "filter", "freq")},
+    **{f"ins_{c}": _slotted(c) for c in ("ctrl", "pw", "filter", "freq")},
+    **{f"{chain}_run": _slotted("run") for chain in ("row", "cmd")},
+    **{f"layers_{k}": _link(k) for k in LAYERED},
     **{f"slot_{k}": _slot_link(k) for k in ("mod", "hold", "reset")},
     **{f"state_{c}": _link(c) for c in ("freq", "pw", "cut")},
     **{f"def_{k}": _section(k) for k in ("restart", "ins", "ctrl", "phrase")},
@@ -613,6 +652,7 @@ def read(text: str) -> Document:
     (:func:`unitracker_grammar.expand.core`)."""
     tree = core(text)
     try:
-        return ToDocument().transform(tree)
+        layers = next(tree.find_data("layers"), None)
+        return ToDocument(layers and ToDocument().transform(layers)[1]).transform(tree)
     except exceptions.VisitError as exc:
         raise exc.orig_exc from exc

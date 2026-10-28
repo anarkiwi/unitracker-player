@@ -8,12 +8,13 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 
 | line | meaning |
 |---|---|
-| `unitracker` | `2.3`; any other version is outside the grammar |
+| `unitracker` | `2.4` where the document has a `layers` line, else `2.3`; any other version is outside the grammar |
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248) and `rounding` how its words are rounded (see [Modulators](#modulators)); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
 | `tempo` | `n` ticks per step, or `[a,b]`, steps alternating `a` and `b` (default 6); 0 is refused |
 | `slots` | per cell, its modulator slots (see [Slots](#slots)) |
+| `layers` | per program kind, its layers (see [Layers](#layers)) |
 | `order` | the phases of a tick in the order they run (see [Order within a tick](#order-within-a-tick)) |
 | `state` | per cell, the state variables code modulators read and write (see [Code modulators](#code-modulators)) |
 | `tables` | the tables expressions read as `T[k]` and code as `T.lo` and `T.hi` |
@@ -198,8 +199,8 @@ A note without `legato` sets the event note, clears the rows' relative and absol
 the gate on and starts the voice's instrument, if it has one:
 
 - `ad` and `sr` take the instrument's;
-- the control program restarts at its first row;
-- the pulse program restarts unless the event carries the `pw` flag, the filter program unless it
+- each control program the instrument names starts in its layer (see [Layers](#layers));
+- each pulse program starts unless the event carries the `pw` flag, each filter program unless it
   carries `filter`;
 - each `freq` field binds its slot of the frequency, or with `none` ends its binding.
 
@@ -235,8 +236,10 @@ ending is ignored.
 
 ## Programs
 
-Each voice has three slots: control, pulse and filter; the filter runs one program, so a filter
-program a voice starts stops every other voice's filter slot, as `filter:none` there would. A
+Each voice has a program slot per layer of each kind, control, pulse and filter (one per kind
+without a `layers` line, see [Layers](#layers)); the filter runs one program per layer, so a
+filter program a voice starts stops the same layer of every other voice, as `filter:none` there
+would. A
 program started at tick `s` applies its first row at `s + wait`; each next row at the tick the
 previous row applied plus its `hold` plus the row's `wait`; `hold` is 1 and `wait` 0 when left out.
 After its last row `end` stops the slot, leaving every cell as it is, and `{loop:k}` continues at
@@ -268,12 +271,37 @@ nothing.
 | `route_off:m` | removes them; `route`, `route_on` and `route_off` are a row's routing keys, `row.route` naming each |
 | `mode` | `$D418` bits 4-7 become the value's bits 4-7 |
 | `freq:b`, `slot.freq:b` | binds the voice's frequency slot to `b`; an integer `n` is `F(N) + n` |
-| `run:c3`, `run:pw2`, `run:f1` | starts that program at this tick in the control, pulse or filter slot |
+| `run:c3`, `run:pw2`, `run:f1` | starts that program at this tick in the control, pulse or filter slot, its kind's first layer's |
+| `b.run:c3` | ... in its kind's layer `b`; `run` repeats, each starting its program in the order written |
 | `run:arp(7,4)` | starts the call's program (see [Definitions](#definitions)) in its kind's slot |
 | `vol` | the volume, `$D418` bits 0-3 |
 
 Values wider than their field keep their low bits. In a program template's rows a parameter
 stands for the integer its call passes (see [Definitions](#definitions)).
+
+## Layers
+
+`layers:{ctrl:[a,b],pw:[x,y],filter:[...]}` names, per program kind, its layers in the order a
+tick runs them; a kind left out has one. Each layer is a program slot of its own, with its own
+cursor, so its program walks, loops and ends by its own rows. A layer's prefix names it where a
+program starts: an instrument's field (`b.ctrl:c7`, `y.pw:pw2`), a program row's `run` and a
+` run:` command (`b.run:c7`, `b.run:none`); no prefix names the kind's first layer. An
+instrument's `ctrl` field and `run` repeat, once per layer. A `pw` or `filter` field's prefix
+names a layer where it is one of the kind's layers, else a slot of the cell, as before; a
+name that is both a layer of `pw` (`filter`) and a slot of `pw` (`cut`), a layer named twice in
+a kind, a prefix naming no layer of its kind and an instrument starting one layer twice are
+refused.
+
+- **Order.** A kind's phase runs its first layer over every voice, then its second over every
+  voice, and so on; a later layer's row keys replace an earlier one's within the tick. A
+  program a row of an earlier layer starts in a later one applies its first due row in the
+  same phase.
+- **Starting.** A note's instrument starts only the layers it names; every other layer keeps
+  running, as a kind the instrument leaves out does. The `pw` and `filter` flags keep every layer
+  of their kind.
+- **Stopping.** `run:none` stops one control layer. `pw:hold` stops every pulse layer of the
+  voice and `cut:hold` every filter layer (of every voice with `global:[cut]`).
+- **Events.** `row` and `row.KEY` name the rows of every control layer.
 
 ## Slots
 
@@ -389,8 +417,8 @@ note, in grammar order, a cell's commands in the order written.
 
 | command | meaning |
 |---|---|
-| `run:c3`, `run:pw2`, `run:f1` | starts that program in the slot its prefix names; refused on a voice that has no instrument yet |
-| `run:none` | stops the control slot |
+| `run:c3`, `run:pw2`, `run:f1`, `b.run:c3` | starts that program in the slot its name's kind and its prefix's layer name; refused on a voice that has no instrument yet |
+| `run:none`, `b.run:none` | stops the control layer its prefix names, else the first |
 | `pw:b`, `slot.pw:b` | binds the pulse width's slot to `b`: an integer, a call, an `asm{...}` body or a quoted expression |
 | `ad:n`, `sr:n` | the envelope byte |
 | `ctrl:n` | the control byte, as a row's `ctrl` |
@@ -436,7 +464,7 @@ registers. The phases are:
 | phase | what it runs |
 |---|---|
 | `events` | at tick 0 the `init` events; the voice's restart rows due this tick but its read row, then its events due this tick |
-| `ctrl`, `pulse`, `filter` | the voice's control, pulse or filter program slot (see [Programs](#programs)) |
+| `ctrl`, `pulse`, `filter` | the control, pulse or filter program slots: each layer in declared order, over the voices (see [Layers](#layers)) |
 | `freq`, `pw`, `cut` | the cell's modulator slots in their order (see [Modulators](#modulators)); `cut` once, for the one cutoff |
 | `read` | the read row: a note's restart's first lookahead row, on its tick, the step's read tick (see [Hard restart](#hard-restart)) |
 
