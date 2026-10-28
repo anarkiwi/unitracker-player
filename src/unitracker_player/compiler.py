@@ -3,6 +3,7 @@ modulators compiled once."""
 
 import ast
 from dataclasses import dataclass
+from functools import cached_property
 
 from unitracker_grammar import PAL_HZ
 from unitracker_grammar.code import Call, inline, signature
@@ -25,7 +26,7 @@ from unitracker_player.document import (
     read,
 )
 from unitracker_player.expr import compile_expr, constant, note_table, offset
-from unitracker_player.sequencer import PlayError
+from unitracker_player.sequencer import PlayError, loops
 
 MAX_VOICES = 3
 REGISTERS = 25
@@ -94,7 +95,8 @@ class Song:  # pylint: disable=too-many-instance-attributes
     events}`` per ``hold``/``reset slot.cell``, ``rows`` their row events, ``defaults`` ``{cell:
     ((slot, fn, once), ...)}``, ``state`` ``{cell: bytes}``, ``code`` whether code plays, ``regs``
     the registers before tick 0, ``lag`` the ticks they are late, ``shared`` the song's cells,
-    ``kinds`` the kind of each program slot, a kind's first layer's at the kind's index."""
+    ``kinds`` the kind of each program slot, a kind's first layer's at the kind's index,
+    ``orders`` per voice its orderlist ``(entries, loop entry or None)`` or None for rows."""
 
     voices: int
     tempo: tuple
@@ -116,6 +118,20 @@ class Song:  # pylint: disable=too-many-instance-attributes
     lag: int = 0
     shared: tuple = ()
     kinds: tuple = (CONTROL, PULSE, FILTER)
+    orders: tuple | None = None
+
+    @property
+    def looping(self) -> bool:
+        """Whether the song plays forever: its rows loop, or an orderlist does."""
+        if self.orders is None:
+            return self.loop is not None
+        return any(loop is not None for _, loop in self.orders)
+
+    @cached_property
+    def periods(self) -> tuple | None:
+        """Per voice of an orderlist song ``(loop entry, tick, period)``: its events from
+        ``tick`` on repeat every ``period`` ticks; None for a voice that ends, and for rows."""
+        return None if self.orders is None else loops(self)
 
 
 def _tempo(value, where: str) -> tuple:
@@ -452,7 +468,14 @@ def compile_document(doc: Document, compiler=None) -> Song:
     init = tuple(comp.event(e) for e in doc.init or ())
     if doc.init is not None and len(init) != head.voices:
         raise PlayError(f"init: {len(init)} events for {head.voices} voices")
-    timeline = []
+    timeline, orders = [], None
+    if doc.voices is not None:
+        if len(doc.voices) != head.voices:
+            raise PlayError(f"song: {len(doc.voices)} orderlists for {head.voices} voices")
+        orders = tuple((tuple(map(comp.entry, p)), loop) for p, loop in doc.voices)
+        for v, (plays, loop) in enumerate(orders):
+            if loop is not None and loop >= len(plays):
+                raise PlayError(f"voice {v + 1}: loop entry {loop} out of range")
     for i, plays in enumerate(doc.timeline):
         if len(plays) != head.voices:
             raise PlayError(f"row {i}: {len(plays)} play entries for {head.voices} voices")
@@ -487,6 +510,7 @@ def compile_document(doc: Document, compiler=None) -> Song:
         head.lag,
         head.global_cells,
         comp.kinds,
+        orders,
     )
 
 

@@ -103,6 +103,7 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
         [n - t for n in seq.next],
         seq.stopped,
         seq.row,
+        seq.entry,
     )
     pending = [
         {k - t: v for k, v in d.items() if v}
@@ -119,25 +120,18 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
 
 def render(doc, ticks: int | None = None, progress: bool = False) -> Render:
     """The frames of Document ``doc``: ``ticks`` of them when given (as an ending song), else
-    to its end, or to the first recurrence of its state at its loop row; a looping song with a
-    code modulator needs ``ticks``."""
+    to its end, or to the first recurrence of its state where it passes its loop (its loop row,
+    an orderlist song's first looping voice's loop entry); a looping song with a code modulator
+    needs ``ticks``."""
     # pylint: disable=too-many-locals
     compiler = type("Recording", (_Recording,), {"nodes": {}})
     song = compile_document(doc, compiler)
-    if ticks is None and song.loop is not None and song.code:
+    if ticks is None and song.looping and song.code:
         raise RenderError("a looping song with a code modulator: its loop needs --ticks")
     namespace = {"_F": song.table, "_T": {k: indexed(v) for k, v in doc.tables.items()}}
     periods = _Periods(compiler.nodes, namespace)
     player, rows = Player(song), []
-    seq = player._seq  # pylint: disable=protected-access
-    start_row, starts = seq._start_row, []  # pylint: disable=protected-access
-
-    def counted(t, ending):
-        start_row(t, ending)
-        if song.loop is not None and seq.row == song.loop + 1:
-            starts.append(t)
-
-    seq._start_row = counted  # pylint: disable=protected-access
+    starts = player._seq.passes  # pylint: disable=protected-access
     seen: dict = {}
     with tqdm(total=ticks, unit="tick", disable=not progress) as meter:
         while ticks is None or len(rows) < ticks:

@@ -532,7 +532,7 @@ def play(source, ticks: int | None = None, progress: bool = False) -> np.ndarray
     25)``: to the song's end when ``ticks`` is None (a looping song needs ``ticks``), and fewer
     rows where the song ends first."""
     song = load(source) if isinstance(source, str) else source
-    if ticks is None and song.loop is not None:
+    if ticks is None and song.looping:
         raise PlayError("a looping song needs ticks")
     player = Player(song)
     frames = np.zeros((ticks or 0, REGISTERS), dtype=np.uint8)
