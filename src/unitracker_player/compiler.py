@@ -36,6 +36,8 @@ CONTROL, PULSE, FILTER = range(3)
 ORDER = ("events", "ctrl", "pulse", "filter", "freq", "pw", "cut")
 PHASES = (*ORDER, "read")
 SLOT_PHASES = {"ctrl": CONTROL, "pulse": PULSE, "filter": FILTER}
+KIND_SLOT = {"ctrl": CONTROL, "pw": PULSE, "filter": FILTER}
+SLOTS = tuple(KIND_SLOT.values())
 FREQ_MASK, PW_MASK, CUT_MASK = 0xFFFF, 0xFFF, 0x7FF
 KIND_CELL = {"pw": "pw", "filter": "cut"}
 ROW_KEYS = frozenset("ctrl gate note ad sr pw cut res route mode freq run vol".split())
@@ -56,8 +58,9 @@ class CProgram:
 
 @dataclass(frozen=True)
 class CInstrument:
-    """A compiled instrument; ``freq`` its ``(slot, fn)`` frequency modulators or None, and
-    ``restart`` its rows with the ticks each precedes the note."""
+    """A compiled instrument; ``freq`` its ``(slot, fn)`` frequency modulators or None,
+    ``restart`` its rows with the ticks each precedes the note, and ``layers`` ``(program slot,
+    program)`` of the layers past each kind's first."""
 
     ad: int | None
     sr: int | None
@@ -66,6 +69,7 @@ class CInstrument:
     filter: CProgram | None
     freq: object
     restart: tuple | None
+    layers: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -89,7 +93,8 @@ class Song:  # pylint: disable=too-many-instance-attributes
     """A document compiled for playing: ``slots`` ``{cell: slot names}``, ``marks`` ``{mark:
     events}`` per ``hold``/``reset slot.cell``, ``rows`` their row events, ``defaults`` ``{cell:
     ((slot, fn, once), ...)}``, ``state`` ``{cell: bytes}``, ``code`` whether code plays, ``regs``
-    the registers before tick 0, ``lag`` the ticks they are late, ``shared`` the song's cells."""
+    the registers before tick 0, ``lag`` the ticks they are late, ``shared`` the song's cells,
+    ``kinds`` the kind of each program slot, a kind's first layer's at the kind's index."""
 
     voices: int
     tempo: tuple
@@ -110,6 +115,7 @@ class Song:  # pylint: disable=too-many-instance-attributes
     regs: tuple
     lag: int = 0
     shared: tuple = ()
+    kinds: tuple = (CONTROL, PULSE, FILTER)
 
 
 def _tempo(value, where: str) -> tuple:
@@ -119,13 +125,8 @@ def _tempo(value, where: str) -> tuple:
     return pair
 
 
-def _slot(name) -> int:
-    """The program slot of a program's name or an inline program's kind."""
-    return PULSE if name.startswith("pw") else CONTROL if name.startswith("c") else FILTER
-
-
 def _kind(name: str) -> str:
-    """The kind of a program's name."""
+    """The kind of a program's name or an inline program's kind."""
     return {"r": "restart", "c": "ctrl", "p": "pw", "f": "filter"}[name[0]]
 
 
@@ -169,6 +170,23 @@ class _Compiler:
         self.order = ORDER if head.order is None else head.order
         if head.order is not None and sorted(head.order) != sorted(PHASES):
             raise PlayError(f"order: each of {', '.join(PHASES)} once")
+        kinds, self.layers = [CONTROL, PULSE, FILTER], {}
+        for kind, slot in KIND_SLOT.items():
+            names = head.layers.get(kind, ())
+            if len(set(names)) != len(names):
+                raise PlayError(f"layers: {kind} names a layer twice")
+            if clash := sorted(set(names) & set(self.slots.get(KIND_CELL.get(kind), ()))):
+                raise PlayError(f"layers: {clash} name both a {kind} layer and a slot")
+            self.layers[kind] = (names, (slot, *range(len(kinds), len(kinds) + len(names) - 1)))
+            kinds += [slot] * (len(names) - 1)
+        self.kinds = tuple(kinds)
+
+    def layer(self, kind: str, name: str = "") -> int:
+        """The program slot of ``kind``'s layer ``name``, its first where ``name`` is empty."""
+        names, slots = self.layers[kind]
+        if name and name not in names:
+            raise PlayError(f"{name}.{kind}: {kind} has no layer {name}")
+        return slots[names.index(name) if name else 0]
 
     def fn(self, expr: Expr, freq: bool = False, key=None):
         """The compiled expression, memoised by its node or by ``key``."""
@@ -236,16 +254,21 @@ class _Compiler:
             self._fill(self.memo.setdefault(key, CProgram()), source, ref, bag or {})
         return self.memo[key]
 
-    def run(self, value) -> tuple:
-        """``(slot, program)`` of a ``run`` of a program's name, ``(kind, program)`` or a call,
-        bare or after its kind as ``(kind, call)``."""
+    def run(self, key: str, value) -> tuple:
+        """``(slot, program)`` of a ``run`` (``layer.run``) of a program's name, ``(kind,
+        program)`` or a call, bare or after its kind as ``(kind, call)``; ``none`` the control
+        layer's, the program None."""
+        layer = key.rpartition(".")[0]
+        if value is None:
+            return self.layer("ctrl", layer), None
         kind, ref = (value, value) if isinstance(value, (str, Call)) else value
         if isinstance(ref, Call):
             own = self.doc.forms.get(ref.name, (None,))[0]
             if own in (None, "restart"):
                 raise PlayError(f"run: {ref}: {ref.name} is no ctrl, pw or filter program template")
             kind = own if kind is ref else kind
-        return _slot(kind), self.program(ref, kind if isinstance(ref, Call) else None)
+        prog = self.program(ref, kind if isinstance(ref, Call) else None)
+        return self.layer(_kind(kind), layer), prog
 
     def _fill(self, out: CProgram, source: Program, ref, bag=None):
         if source.loop is not None and source.loop >= len(source.rows):
@@ -266,8 +289,8 @@ class _Compiler:
         for key, value in keys:
             if key.rpartition(".")[2] in CELLS:
                 key, value = self.cell(key, value)
-            elif key == "run":
-                value = self.run(value)
+            elif key.rpartition(".")[2] == "run":
+                key, value = "run", self.run(key, value)
             out.append((key, value))
         return tuple(out)
 
@@ -312,6 +335,10 @@ class _Compiler:
                 self.program(ins.filter, "filter", True),
                 tuple(self.cell(key, value)[1] for key, value in ins.freq) or None,
                 self.restart(ins.restart),
+                tuple(
+                    (self.layer(kind, layer), self.program(ref, kind, kind != "ctrl"))
+                    for kind, layer, ref in ins.layers
+                ),
             )
         return self.memo[key]
 
@@ -372,8 +399,8 @@ class _Compiler:
         cmds = dict(event.commands)
         ops = []
         for key, value in event.commands:
-            if key == "run":
-                value = None if value is None else self.run(value)
+            if key.rpartition(".")[2] == "run":
+                key, value = "run", self.run(key, value)
             elif key.rpartition(".")[2] in CELLS:
                 key, value = self.cell(key, value)
             elif key in ("tempo", "vtempo", "legato"):
@@ -459,6 +486,7 @@ def compile_document(doc: Document, compiler=None) -> Song:
         _regs(head.regs),
         head.lag,
         head.global_cells,
+        comp.kinds,
     )
 
 

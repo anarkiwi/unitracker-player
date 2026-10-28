@@ -26,10 +26,11 @@ regs = player.step()              # the 25 registers after one tick; None once t
 player.regs                       # the register file the last tick wrote, one store per register
 ```
 
-It plays format 2.3, the grammar's one format: its sugar (prelude templates, chord names,
-instrument and phrase templates, groups, sections, first-use definitions) as the grammar's core
-expansion (`unitracker_grammar.expand.core`), and once bindings (`pw:800!`), `lag:k` and
-`global:[cut]` itself. Code templates run as 6502 routines on a
+It plays formats 2.3 and 2.4, the grammar's formats: their sugar (prelude templates, chord
+names, instrument and phrase templates, groups, sections, first-use definitions) as the
+grammar's core expansion (`unitracker_grammar.expand.core`), and once bindings (`pw:800!`),
+`lag:k`, `global:[cut]` and 2.4's program layers (`layers:{ctrl:[a,b]}`, `b.ctrl:c7`,
+`b.run:c7`) itself. Code templates run as 6502 routines on a
 [jennings](https://pypi.org/project/jennings/) MPU, with per-voice state from the document's
 `state` line; templates, in the top-level `mod` section keyed by signatures (`vib(c,s):|`), are
 bound by calls (`wob.freq:vib(3,40)`), and code reads the note table as `F.lo` / `F.hi`. A
