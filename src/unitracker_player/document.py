@@ -49,8 +49,18 @@ _VALUES = {
 }
 _PITCH = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 _NOTE = re.compile(r"([A-G])(#?)(-?\d+)")
-_HEADER = ("rounding", "voices", "tempo", "slots", "layers", "order", "state", "regs", "lag")
-_HEADER += ("global_cells",)
+_HEADER = (
+    "rounding",
+    "voices",
+    "tempo",
+    "slots",
+    "layers",
+    "order",
+    "state",
+    "regs",
+    "lag",
+    "global_cells",
+)
 KINDS = ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase")
 LAYERED = ("ctrl", "pw", "filter")
 _CELL = {"pw": "pw", "filter": "cut", "cut": "cut", "freq": "freq"}
