@@ -8,7 +8,7 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 
 | line | meaning |
 |---|---|
-| `unitracker` | `2.4` where the document has a `layers` line or orderlists, else `2.3`; any other version is outside the grammar |
+| `unitracker` | `2.4` where the document has a `layers` line, orderlists or a call of the prelude's `hr`, else `2.3`; any other version is outside the grammar |
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248) and `rounding` how its words are rounded (see [Modulators](#modulators)); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
@@ -110,6 +110,7 @@ document (`unitracker_grammar.expand.core`), so each plays exactly as what it ex
 | a group `[a,b]x3`, in a phrase or among song items | its body that many times (2 or more) |
 | a volta `[body\|end1\|end2]` | the body then `end1`, the body then `end2`, and so on for each ending (2 or more) |
 | a section `s1:[ITEM,...]`; an item `s1`, `s1x2` | the section's items, played out, that many times; a section that plays itself is refused |
+| an instrument's `restart:hr(lead,ad,sr,test,stop)`, `test` and `stop` 0 or 1 and optional, where the document defines no `hr` | the restart rows `[{hold:lead,gate:0,ad:ad,sr:sr},{},end]` (`unitracker_grammar.expand.hr`; no `hold` for a lead of 1), with `test` `mask:8` in the first row and `mask:0` in the last, with `stop` `run:ctrl[end]` in the first; see [Hard restart](#hard-restart) |
 
 A phrase's octave elision follows the written order, groups included (`[C4,[E|G|A5],B]` is C4
 E4 G4 E4 A5 B5). A song item is a row (`play:[...]`), a section, a group or a section's first
@@ -226,6 +227,11 @@ bindings are untouched, and no restart runs; it applies on its restart's last lo
 tick (see [Hard restart](#hard-restart)).
 
 ## Hard restart
+
+The prelude's `hr(lead,ad,sr,test,stop)` (see [Sugar](#sugar)) is the common form: from `lead`
+ticks before the note the gate is off and the envelope `ad`, `sr`; `test` holds the TEST bit
+until the note, and `stop` stops the voice's control program (its first layer's) at the
+restart's first row, as GoatTracker 2's player does. It plays as its rows.
 
 A voice's restart program is the `restart` of its instrument as of the event (the event's
 `.iN`, else the voice's last). It is anchored to every event of the voice without `legato`
