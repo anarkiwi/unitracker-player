@@ -468,14 +468,7 @@ def compile_document(doc: Document, compiler=None) -> Song:
     init = tuple(comp.event(e) for e in doc.init or ())
     if doc.init is not None and len(init) != head.voices:
         raise PlayError(f"init: {len(init)} events for {head.voices} voices")
-    timeline, orders = [], None
-    if doc.voices is not None:
-        if len(doc.voices) != head.voices:
-            raise PlayError(f"song: {len(doc.voices)} orderlists for {head.voices} voices")
-        orders = tuple((tuple(map(comp.entry, p)), loop) for p, loop in doc.voices)
-        for v, (plays, loop) in enumerate(orders):
-            if loop is not None and loop >= len(plays):
-                raise PlayError(f"voice {v + 1}: loop entry {loop} out of range")
+    timeline = []
     for i, plays in enumerate(doc.timeline):
         if len(plays) != head.voices:
             raise PlayError(f"row {i}: {len(plays)} play entries for {head.voices} voices")
@@ -510,8 +503,20 @@ def compile_document(doc: Document, compiler=None) -> Song:
         head.lag,
         head.global_cells,
         comp.kinds,
-        orders,
+        _orders(doc, comp),
     )
+
+
+def _orders(doc: Document, comp: _Compiler) -> tuple | None:
+    """Per voice its compiled orderlist ``(entries, loop)``, None for a song of rows."""
+    if doc.voices is None:
+        return None
+    if len(doc.voices) != doc.header.voices:
+        raise PlayError(f"song: {len(doc.voices)} orderlists for {doc.header.voices} voices")
+    for v, (plays, loop) in enumerate(doc.voices):
+        if loop is not None and loop >= len(plays):
+            raise PlayError(f"voice {v + 1}: loop entry {loop} out of range")
+    return tuple((tuple(map(comp.entry, plays)), loop) for plays, loop in doc.voices)
 
 
 def _regs(regs: tuple | None) -> tuple:
