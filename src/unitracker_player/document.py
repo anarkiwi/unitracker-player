@@ -200,7 +200,8 @@ class Header:
 @dataclass(frozen=True)
 class Document:
     """A whole document: the header, its tables and init row, every definition by name and the
-    timeline's rows of play entries with its ending (``loop`` None for ``end``); ``templates``
+    timeline's rows of play entries with its ending (``loop`` None for ``end``), or ``voices``
+    per voice its orderlist ``(play entries, loop entry or None)``; ``templates``
     the modulator templates by name, each an Expr or a Code, ``signatures`` their parameters,
     ``{name: parameters}``, and ``forms`` the program templates, ``{name: (kind, parameters,
     program)}``."""
@@ -216,6 +217,7 @@ class Document:
     loop: int | None
     templates: dict
     signatures: dict
+    voices: tuple | None = None
 
 
 def _tok(token: Token):
@@ -296,7 +298,8 @@ class ToDocument(Nodes):
         self.layered = layers or {}
 
     def start(self, children):
-        head, defs, timeline = {"tables": {}, "init": None}, {k: {} for k in KINDS}, []
+        head, defs, timeline = {"tables": {}, "init": None, "ending": None}, {}, []
+        defs, voices = {k: {} for k in KINDS}, []
         for tag, value in _values(children):
             if tag in KINDS:
                 for name, record in value:
@@ -305,6 +308,8 @@ class ToDocument(Nodes):
                     defs[tag][name] = record
             elif tag == "row":
                 timeline.append(value)
+            elif tag == "voice":
+                voices.append(value)
             else:
                 head[tag] = value
         clock = head.pop("clock", (None, None))
@@ -323,6 +328,7 @@ class ToDocument(Nodes):
             head["ending"],
             {signature(k)[0]: v for k, v in defs["mod"].items()},
             dict(map(signature, defs["mod"])),
+            tuple(voices) if voices else None,
         )
 
     @staticmethod
@@ -451,6 +457,14 @@ class ToDocument(Nodes):
         if values:
             return Play("phrase", values[0], values[1] if len(values) > 1 else 0)
         return Play("cont" if _words(children) == ["~"] else "end")
+
+    voice_play = play
+
+    @staticmethod
+    def voice(children):
+        values = _values(children)
+        loop = values.pop() if isinstance(values[-1], int) else None
+        return ("voice", (tuple(values), loop))
 
     @staticmethod
     def def_mod(children):

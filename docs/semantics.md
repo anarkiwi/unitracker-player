@@ -8,7 +8,7 @@ The output is the state of the 25 SID registers `$D400`-`$D418` at the end of ea
 
 | line | meaning |
 |---|---|
-| `unitracker` | `2.4` where the document has a `layers` line, else `2.3`; any other version is outside the grammar |
+| `unitracker` | `2.4` where the document has a `layers` line or orderlists, else `2.3`; any other version is outside the grammar |
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248) and `rounding` how its words are rounded (see [Modulators](#modulators)); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
@@ -163,6 +163,21 @@ is refused.
 
 `play(text, ticks=None)` plays an ending song to its end and refuses a looping one; with `ticks`
 it plays that many ticks or to the song's end, whichever is first.
+
+### Orderlists
+
+A song may instead be one orderlist per voice (` - voice:[p1,p2+2|loop:1]`, ` - voice:[p3|end]`),
+a count other than `voices` refused. Each voice walks its own: when its phrase ends it starts its
+next entry, with no row and no check against the other voices; past its last entry `loop:k`
+continues at entry `k` (refused outside its entries) and `end` stops the voice as a row's `end`
+does. The song ends at the tick every voice has stopped, and loops while any voice loops. Tempo,
+filter and volume commands act when the voice that carries them plays them.
+
+The compiled song's `periods` gives per voice `(k, tick, period)`: the voice starts its loop entry
+`k` at `tick` and its steps repeat every `period` ticks from there, the first span between two
+starts of entry `k` at the same tempo and swing phase (None for a voice that ends). The whole
+song's registers then repeat with the common multiple of the periods, from the latest `tick`;
+`render` proves its loop where the first looping voice starts its loop entry.
 
 ## Init
 
