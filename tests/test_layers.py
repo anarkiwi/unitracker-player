@@ -129,7 +129,7 @@ def test_a_pulse_field_s_prefix_names_a_layer_or_else_a_slot():
     text = layered(
         "pw:[x,y]", ins=ins, pw={"pw2": "[{q.pw:v + 10},end]"}, head="slots:{pw:{s:{},q:{}}}\n"
     )
-    assert pulse(play(text, 3)) == [15, 15, 15]
+    assert pulse(play(text, 3)) == [15, 25, 35]
 
 
 @pytest.mark.parametrize(

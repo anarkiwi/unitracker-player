@@ -300,13 +300,23 @@ CASES = {
         freq,
         [F(48 if t < 12 else 50) + 3 * t for t in R24],
     ),
-    "freq-offset-none": (
-        doc(phrase="[C4.i1 freq:+5,- freq:none,-*2]"),
+    "freq-offset-expression-none": (
+        doc(phrase="[C4.i1 freq:'F(N) + 5',- freq:none,-*2]"),
         freq,
         [F(48) + 5] * 6 + [F(48)] * 18,
     ),
-    "freq-negative": (doc(phrase="[C4.i1 freq:-3,-*3]"), freq, [F(48) - 3] * 24),
-    "freq-int": (doc(phrase="[C4.i1 freq:7,-*3]"), freq, [F(48) + 7] * 24),
+    "freq-offset-fires-once": (
+        doc(phrase="[C4.i1 freq:+5,- freq:none,-*2]"),
+        freq,
+        [F(48) + 5] + [F(48)] * 23,
+    ),
+    "freq-negative": (doc(phrase="[C4.i1 freq:-3,-*3]"), freq, [F(48) - 3] + [F(48)] * 23),
+    "freq-int": (doc(phrase="[C4.i1 freq:7,-*3]"), freq, [F(48) + 7] + [F(48)] * 23),
+    "freq-int-after-a-note-offsets-that-tick-only": (
+        doc(phrase="[C4.i1,D.i1,- freq:+4,-]"),
+        freq,
+        [F(48)] * 6 + [F(50)] * 6 + [F(50) + 4] + [F(50)] * 11,
+    ),
     "freq-command-rebinds-the-instrument-s-slot": (
         doc(ins="{freq:F(N) + phi}", phrase="[C4.i1,- freq:+0,- freq:none,-]"),
         freq,
@@ -323,19 +333,19 @@ CASES = {
         [F(48) + min(t, 5) for t in R24],
     ),
     "freq-hold-ends-at-note": (
-        doc(phrase="[C4.i1 freq:+5,- freq:hold,D,-]"),
+        doc(phrase="[C4.i1 freq:'F(N) + 5',- freq:hold,D,-]"),
         freq,
         [F(48) + 5] * 12 + [F(50)] * 12,
     ),
     "freq-hold-none": (
-        doc(phrase="[C4.i1 freq:+5,- freq:hold,- freq:none,-]"),
+        doc(phrase="[C4.i1 freq:'F(N) + 5',- freq:hold,- freq:none,-]"),
         freq,
         [F(48) + 5] * 12 + [F(48)] * 12,
     ),
     "freq-hold-yields-to-a-row": (
         doc(
             ins="{ctrl:[{ctrl:65},{wait:9,freq:F(N) + 50},end]}",
-            phrase="[C4.i1 freq:+5,- freq:hold,-*2]",
+            phrase="[C4.i1 freq:'F(N) + 5',- freq:hold,-*2]",
         ),
         freq,
         [F(48) + (5 if t < 10 else 50) for t in R24],
@@ -504,7 +514,7 @@ CASES = {
     "freq-row-int": (
         doc(ins="{ctrl:[{ctrl:65,note:+0,freq:5},end]}"),
         freq,
-        [F(48) + 5] * 24,
+        [F(48) + 5] + [F(48)] * 23,
     ),
     "freq-row-expr": (
         doc(ins="{ctrl:[{ctrl:65,note:+0,freq:F(N) + 2*phi},end]}"),

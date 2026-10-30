@@ -26,6 +26,7 @@ from unitracker_player.compiler import (
     Song,
     compile_document,
     load,
+    written,
 )
 from unitracker_player.sequencer import PlayError, Sequencer
 
@@ -403,14 +404,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
                 self.chip["route"] = route | bits if key == "route_on" else route & ~bits
             elif key == "run":
                 self._start(v, value[0], value[1], c)
-            elif isinstance(value, int):
-                if key == "ctrl":
-                    voice.gate |= first
-                if key in SONG_CELLS:
-                    self.chip[key] = value
-                else:
-                    setattr(voice, key, value)
             elif isinstance(value[0], int):
+                voice.gate |= first and key == "ctrl" and written(value)
                 self._set(v, key, *value, command, fresh)
             else:
                 self._stop(v, key, *value)
@@ -437,10 +432,6 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
 
     def _instrument(self, v: int, ins: CInstrument, event: CEvent, c: int):
         voice = self.voices[v]
-        if ins.ad is not None:
-            voice.ad = ins.ad
-        if ins.sr is not None:
-            voice.sr = ins.sr
         if ins.ctrl is not None:
             self._start(v, CONTROL, ins.ctrl, c)
         if ins.pw is not None and not event.keep_pw:
@@ -522,7 +513,7 @@ def _with_envelope(row: tuple, ops: tuple) -> tuple:
     """Restart row ``row`` with a note's plain ``ad``, ``sr`` and ``ctrl`` ``ops`` after its own
     keys."""
     wait, hold, keys = row
-    return wait, hold, keys + tuple((k, v) for k, v in ops if k in ENVELOPE and isinstance(v, int))
+    return wait, hold, keys + tuple((k, v) for k, v in ops if k in ENVELOPE and written(v))
 
 
 def play(source, ticks: int | None = None, progress: bool = False) -> np.ndarray:

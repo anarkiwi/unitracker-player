@@ -110,7 +110,7 @@ def test_read_and_events_do_not_run_on_reduced_calls():
     """D is at sequencer tick 6, call 12, its restart's first row at tick 4, call 8: ad 9 and sr 3
     and the gate off, once; the counter of ad fires on every call, 10 on a call the row or a
     note sets ad 9 and one more on each call after."""
-    head = "tempo:3\nslots:{ad:{a:{mod:'v + 1'}}}\ncalls:{frame:1,full:[1,0]}\n"
+    head = "tempo:3\nslots:{ad:{a:{},b:{mod:'v + 1'}}}\ncalls:{frame:1,full:[1,0]}\n"
     text = doc("[C4.i1,-,D.i1]", ins=RESTART, head=head)
     frames = play(text)
     assert reg(frames, ENV) == [*range(10, 18), 10, 11, 12, 13, *range(10, 16)]
@@ -192,9 +192,17 @@ def test_the_operators_and_functions_of_the_expression_language(text, expected):
 
 
 def test_a_plain_integer_sets_the_cell_and_leaves_its_bindings():
-    """ad counts, 9 then sets it and the slot fires on it, hold ends the binding."""
-    text = doc("[C4.i1 ad:'v + 1',- ad:9,- ad:hold,-]", ins=NOTE_ONLY, head="tempo:2\n")
+    """Slot b of ad counts, a 9 written to slot a is fired once and slot b fires on it, hold ends
+    the binding."""
+    head = "tempo:2\nslots:{ad:{a:{},b:{}}}\n"
+    text = doc("[C4.i1 b.ad:'v + 1',- ad:9,- ad:hold,-]", ins=NOTE_ONLY, head=head)
     assert reg(play(text, 8), ENV) == [1, 2, 10, 11, 11, 11, 11, 11]
+
+
+def test_a_plain_integer_ends_the_binding_of_the_slot_it_is_written_to():
+    """The counter of slot a is replaced by the write, which fires once and leaves the cell 9."""
+    text = doc("[C4.i1 ad:'v + 1',- ad:9,-*3]", ins=NOTE_ONLY, head="tempo:2\n")
+    assert reg(play(text, 8), ENV) == [1, 2, 9, 9, 9, 9, 9, 9]
 
 
 def test_slots_of_a_song_cell_fire_in_order_and_none_ends_one():
@@ -211,8 +219,8 @@ def test_a_once_binding_fires_once_and_reset_restarts_phi():
     assert reg(play(again, 5), D418) == [1, 2, 1, 2, 3]
 
 
-def test_an_instrument_binds_ad_and_a_plain_ad_sets_without_ending_it():
-    """Each note restarts phi; an ad of 9 sets the cell and the binding fires on it; none ends."""
+def test_an_instrument_binds_ad_and_a_plain_ad_writes_once_and_ends_its_slot():
+    """Each note restarts phi; an ad of 9 replaces the binding of its slot and holds; none ends."""
     ins = {
         "i1": "{ad:phi*2 + 1,sr:240}",
         "i2": "{ad:9,sr:240}",
@@ -223,7 +231,7 @@ def test_an_instrument_binds_ad_and_a_plain_ad_sets_without_ending_it():
     again = doc("[C4.i1,-,C4.i1,-]", ins=ins, head=head)
     assert reg(play(again, 6), ENV) == [1, 3, 5, 7, 1, 3]
     plain = doc("[C4.i4,-,C4.i2,-]", ins=ins, head=head)
-    assert reg(play(plain, 6), ENV) == [2, 4, 6, 8, 11, 13]
+    assert reg(play(plain, 6), ENV) == [2, 4, 6, 8, 9, 9]
     ended = doc("[C4.i4,-,C4.i3,-]", ins=ins, head=head)
     assert reg(play(ended, 6), ENV) == [2, 4, 6, 8, 8, 8]
 
@@ -259,19 +267,19 @@ ROW_AD = "{ctrl:[{ctrl:65,note:+0,ad:9},end]}"
 
 
 def ordered(order: str, ins: str, cell: str, head: str = "") -> str:
-    slots = f"slots:{{{cell}:{{a:{{mod:'v + 1'}}}}}}\n"
+    slots = f"slots:{{{cell}:{{a:{{}},b:{{mod:'v + 1'}}}}}}\n"
     return doc("[C4.i1,-*2]", ins=ins, head=f"tempo:2\n{slots}{order}{head}")
 
 
 def test_a_cell_phase_runs_after_the_programs_by_default():
-    """The row sets ad 9, then the phase of ad adds 1: 10, 11, 12."""
+    """The row writes ad 9 to slot a, the phase of ad fires it and slot b adds 1: 10, 11, 12."""
     assert reg(play(ordered("", ROW_AD, "ad"), 3), ENV) == [10, 11, 12]
 
 
 def test_an_order_line_puts_a_cell_s_phase_before_the_programs():
-    """ad adds 1 to 0 first, then the row sets 9: 9, then 10, 11."""
+    """Slot b adds 1 to 0 first, the row's write waits for the next tick's phase: 1, 10, 11."""
     order = "order:[events,ad,ctrl,pulse,filter,freq,pw,cut,read]\n"
-    assert reg(play(ordered(order, ROW_AD, "ad"), 3), ENV) == [9, 10, 11]
+    assert reg(play(ordered(order, ROW_AD, "ad"), 3), ENV) == [1, 10, 11]
 
 
 def test_the_phases_an_order_line_leaves_out_follow_the_nearest_earlier_of_the_sequence():
@@ -288,16 +296,15 @@ def test_the_phases_an_order_line_leaves_out_follow_the_nearest_earlier_of_the_s
 
 
 def test_ctl_is_the_phase_of_the_ctrl_cell():
-    """Before the program sets ctrl 64 the cell adds 1 to 0 and the row overwrites it; by default
-    the row sets 64 and the phase adds 1."""
+    """Before the program writes ctrl 64 the cell's slot b adds 1 to 0 and the write waits for the
+    next tick's phase; by default the row writes 64 and the phase adds 1."""
     row = "{ctrl:[{ctrl:64,note:+0},end]}"
-    default = doc("[C4.i1,-*2]", ins=row, head="tempo:2\nslots:{ctrl:{a:{mod:'v + 1'}}}\n")
+    slots = "slots:{ctrl:{a:{},b:{mod:'v + 1'}}}\n"
+    default = doc("[C4.i1,-*2]", ins=row, head=f"tempo:2\n{slots}")
     early = "order:[events,ctl,ctrl,pulse,filter,freq,pw,cut,read]\n"
-    first = doc(
-        "[C4.i1,-*2]", ins=row, head=f"tempo:2\nslots:{{ctrl:{{a:{{mod:'v + 1'}}}}}}\n{early}"
-    )
+    first = doc("[C4.i1,-*2]", ins=row, head=f"tempo:2\n{slots}{early}")
     assert reg(play(default, 3), 4) == [65, 66, 67]
-    assert reg(play(first, 3), 4) == [64, 65, 66]
+    assert reg(play(first, 3), 4) == [1, 65, 66]
 
 
 @pytest.mark.parametrize(

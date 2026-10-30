@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from unitracker_grammar import PAL_HZ
-from unitracker_grammar.cells import CELLS, LATER_CELLS, MASKS, PHASE_OF
+from unitracker_grammar.cells import CELLS, PHASE_OF
 from unitracker_grammar.code import Call, inline, signature
 from unitracker_grammar.expr import bind, tree
 from unitracker_grammar.model import (
@@ -72,12 +72,10 @@ class CProgram:
 
 @dataclass(frozen=True)
 class CInstrument:  # pylint: disable=too-many-instance-attributes
-    """A compiled instrument. ``binds`` are its ``(cell, op)`` bindings of ``freq``, ``ad`` and
-    ``sr``, ``restart`` its rows with the ticks each precedes the note, ``layers`` the ``(program
-    slot, program)`` of the layers past each kind's first."""
+    """A compiled instrument. ``binds`` are its ``(cell, op)`` bindings and writes of ``freq``,
+    ``ad`` and ``sr``, ``restart`` its rows with the ticks each precedes the note, ``layers`` the
+    ``(program slot, program)`` of the layers past each kind's first."""
 
-    ad: int | None
-    sr: int | None
     ctrl: CProgram | None
     pw: CProgram | None
     filter: CProgram | None
@@ -156,6 +154,11 @@ class Song:  # pylint: disable=too-many-instance-attributes
             return tick
         cycle, at = divmod(tick, len(self._ones))
         return cycle * len(self.full) + self._ones[at]
+
+
+def written(op) -> bool:
+    """Whether a cell's compiled op is a write: a once binding of an integer."""
+    return isinstance(op[0], int) and op[2] and constant(getattr(op[1], "node", None)) is not None
 
 
 def _tempo(value, where: str) -> tuple:
@@ -415,23 +418,25 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
         return tuple(out)
 
     def cell(self, key: str, value) -> tuple:
-        """A cell's key (``cell`` or ``slot.cell``) and value as ``(cell, op)``: for a plain
-        integer of a cell that takes one the integer wrapped to the cell's mask, for a binding
-        ``(slot, fn, once)``, for a stop ``(stop, the slots it acts on)``: ``none`` and ``reset``
-        its slot, ``hold`` every slot of the cell."""
+        """A cell's key (``cell`` or ``slot.cell``) and value as ``(cell, op)``: for a binding
+        ``(slot, fn, once)``, a plain integer being a once binding of a constant (a write), for a
+        stop ``(stop, the slots it acts on)``: ``none`` and ``reset`` its slot, ``hold`` every slot
+        of the cell."""
         name, _, cell = key.rpartition(".")
         names = self.slots[cell]
         if name and name not in names:
             raise PlayError(f"{key}: {cell} has no slot {name}")
         slot = names.index(name) if name else 0
-        if cell in LATER_CELLS and not name and isinstance(value, int):
-            return cell, int(value) & MASKS[cell]
         if value in (NONE, RESET):
             return cell, (value, (slot,))
         if value == HOLD:
             return cell, (HOLD, tuple(range(len(names))))
-        once = isinstance(value, Once)
-        return cell, (slot, self.expression(value.value if once else value, cell), once)
+        once = isinstance(value, (Once, int))
+        return cell, (
+            slot,
+            self.expression(value.value if isinstance(value, Once) else value, cell),
+            once,
+        )
 
     def restart(self, ref) -> tuple | None:
         prog = self.program(ref, "restart")
@@ -468,7 +473,7 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
         return self.memo[key]
 
     def _instrument(self, ins) -> CInstrument:
-        sets, binds, groups, restart = {}, [], {}, None
+        binds, groups, restart = [], {}, None
         for key, value in ins.fields:
             prefix, _, kind = key.rpartition(".")
             if kind in LAYERED_KINDS:
@@ -479,15 +484,9 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
             elif kind == "restart":
                 restart = value
             else:
-                op = self.cell(key, value)[1]
-                if isinstance(op, int):
-                    sets[kind] = op
-                else:
-                    binds.append((kind, op))
+                binds.append((kind, self.cell(key, value)[1]))
         programs, layers = self._programs(groups)
         return CInstrument(
-            sets.get("ad"),
-            sets.get("sr"),
             programs.get("ctrl"),
             programs.get("pw"),
             programs.get("filter"),
@@ -558,7 +557,9 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
         """``{cell: ((slot, fn, once), ...)}`` of the slots' default bindings."""
         return {
             cell: tuple(
-                (k, self.expression(s.mod, cell), False) for k, s in enumerate(slots) if s.mod
+                (k, self.expression(s.mod, cell), isinstance(s.mod, int))
+                for k, s in enumerate(slots)
+                if s.mod
             )
             for cell, slots in self.slotted.items()
         }

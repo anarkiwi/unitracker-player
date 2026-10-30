@@ -117,7 +117,7 @@ def test_a_document_defining_a_prelude_name_is_refused():
         ("[C4.i1 freq:'F(N) + 100'!,-*3]", freq, [F(48) + 100] + [F(48)] * 23),
         ("[C4.i1 pw:'v + 10'!,-,E pw:'v + 10'!,-]", pulse, [10] * 12 + [20] * 12),
         ("[C4.i1 pw:'phi + 100',-,- pw:'phi + 100'!,-]", pulse, list(range(100, 112)) + [100] * 12),
-        ("[C4.i1 pw:800!,-*3]", pulse, [800] * 24),
+        ("[C4.i1 pw:800,-*3]", pulse, [800] * 24),
     ],
 )
 def test_a_command_s_once_binding_fires_once_then_its_slot_is_unbound(phrase, read_out, expected):
