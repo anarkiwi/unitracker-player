@@ -1,27 +1,36 @@
 # Semantics
 
 What the player does with each construct of the canonical grammar
-([`canonical.lark`](https://github.com/anarkiwi/unitracker-grammar/blob/main/src/unitracker_grammar/canonical.lark)).
-The output is the state of the 25 SID registers `$D400`-`$D418` at the end of each tick.
+([`canonical.lark`](https://github.com/anarkiwi/unitracker-grammar/blob/main/src/unitracker_grammar/canonical.lark)),
+formats 2.3 to 2.5. The output is the state of the 25 SID registers `$D400`-`$D418` at the end of
+each frame. Format 2.5, which adds the cells `ctrl ad sr res route mode vol`, `calls`, `holds`,
+the song cells of `global`, the standard note table and the expression operators, is specified
+by unitracker-grammar's
+[format-2.5.md](https://github.com/anarkiwi/unitracker-grammar/blob/main/docs/format-2.5.md);
+this page states the rules it keeps and where the player puts each. The player reads a document as
+unitracker-grammar's model (`unitracker_grammar.document`) after `unitracker_grammar.expand.expanded`
+(`unitracker_player.document.read`) and compiles that.
 
 ## Header
 
 | line | meaning |
 |---|---|
-| `unitracker` | `2.4` where the document has a `layers` line, orderlists or a call of the prelude's `hr`, else `2.3`; any other version is outside the grammar |
+| `unitracker` | `2.5` where the document has a construct of that format, else `2.4` where it has a `layers` line, orderlists or a call of the prelude's `hr`, else `2.3` (`Document.version`); any other version is outside the grammar |
 | `meta` | read and kept; it plays nothing |
-| `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248) and `rounding` how its words are rounded (see [Modulators](#modulators)); `cycles_per_tick` is kept and plays nothing: a tick is one frame |
+| `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248; see [Modulators](#modulators)); `cycles_per_tick` is kept and plays nothing |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
 | `tempo` | `n` ticks per step, or `[a,b]`, steps alternating `a` and `b` (default 6); 0 is refused |
-| `slots` | per cell, its modulator slots (see [Slots](#slots)) |
+| `slots` | per cell (any of the ten of [Cells](#cells)), its modulator slots (see [Slots](#slots)) |
 | `layers` | per program kind, its layers (see [Layers](#layers)) |
-| `order` | the phases of a tick in the order they run (see [Order within a tick](#order-within-a-tick)) |
+| `holds` | per program kind or layer, the events its programs pause on (see [Holds](#holds)) |
+| `order` | the phases of a call in the order they run (see [Order within a tick](#order-within-a-tick)) |
 | `state` | per cell, the state variables code modulators read and write (see [Code modulators](#code-modulators)) |
 | `tables` | the tables expressions read as `T[k]` and code as `T.lo` and `T.hi` |
 | `mod`, `restart`, `ins`, `ctrl`, `pw`, `filter`, `phrase`, `section` | the definitions (see [Definitions](#definitions), [Sugar](#sugar)) |
 | `regs` | the 25 registers before tick 0, `$D400` first (see [Initial state](#initial-state)); a count other than 25 is refused |
-| `lag` | `lag:k`, the ticks the registers are written after the tick that computes them (default 0, see [Registers](#registers)) |
-| `global` | `global:[cut]`: the cutoff's bindings, stops and filter program belong to the song (see [Stops](#stops)) |
+| `lag` | `lag:k`, the calls the registers are written after the call that computes them (default 0, see [Registers](#registers)) |
+| `calls` | `calls:{frame:F,full:[...]}`: the calls of a frame and which are full (see [Calls](#calls)) |
+| `global` | `global:[cut,res,route,mode,vol]`: the song cells whose bindings, stops and, for `cut`, filter program belong to the song (see [Stops](#stops)) |
 | `init` | one event per voice (see [Init](#init)); a count other than `voices` is refused |
 
 ## Initial state
@@ -30,7 +39,7 @@ Every register is its `regs` value (0 where the document has no `regs` line), an
 the value its registers hold (see [Registers](#registers)): a voice's frequency and pulse width
 its words, `ctrl` its `$D404 + 7(i-1)` and the gate that byte's bit 0, `ad` and `sr`; the
 cutoff `$D415 & 7 | $D416 << 3`, `res` and `route` the nibbles of `$D417`, `mode` and `vol`
-those of `$D418`; the mask is 0. The bits the SID lacks (`$D403 + 7(i-1)` bits 4-7, `$D415`
+those of `$D418` (`mode` its bits 4-7 in place); the mask is 0. The bits the SID lacks (`$D403 + 7(i-1)` bits 4-7, `$D415`
 bits 3-7) read 0 from the first tick on, and a voice the document does not play keeps its
 registers as given. No voice has a note, an instrument or a
 program, every slot is unbound but where it has a default binding (see [Slots](#slots)), and
@@ -134,7 +143,9 @@ call binds a cell:
 
 ## Time
 
-A tick is one frame. Each voice has its own tempo `(a, b)` and swing phase: a step of the voice
+A call is one run of the phases of a tick; the sequencer's ticks are the full calls (see
+[Calls](#calls)), and without a `calls` line every call is full and a frame is one call, so a tick
+is one frame. Each voice has its own tempo `(a, b)` and swing phase: a step of the voice
 lasts `a` ticks and the next `b`, alternating (`n` is `(n, n)`). A step's length is fixed when
 it begins, after the events of every voice at that tick have applied their tempo commands:
 the `tempo` command sets every voice's tempo and returns every voice's alternation to `a`, `vtempo` this
@@ -143,6 +154,18 @@ voice's, from the step that begins at or after the command.
 A voice's event applies at the first tick of its step, or earlier (see
 [Hard restart](#hard-restart)); `*k` makes it last `k` steps, the steps after its first empty
 but timed by the alternation.
+
+## Calls
+
+`calls:{frame:F,full:[p0,p1,...]}` makes a frame of `F` consecutive calls, call `c` full if
+`full[c mod len(full)]` is 1 (every call full without `full`). One row of registers is output per
+frame: the registers after its last call. A reduced call runs every phase but `events` and
+`read`. What the sequencer owns counts the full calls only: `events` and `read`, init (the first
+full call), `tempo`, `vtempo`, the steps, an event's `*k`, the timeline, a restart's rows, their
+`hold` and `wait` and the lookahead before the note, and the song's end. Everything else counts
+calls: programs' `wait` and `hold`, a modulator's phi, once bindings, the `-k` of a slot's and a
+pause's events, `lag` and the sampling. The song ends at the call of the full call that is the
+sequencer's end, and a partial last frame is not output. `play(text, ticks)` counts frames.
 
 ## Timeline
 
@@ -158,12 +181,12 @@ other voice has `~`; anything else is refused at that tick.
 | `end` | the voice stops: it takes no more events; its programs and modulators keep running |
 
 After the last row the ending applies as a row would: `{loop:k}` continues at row `k`, and
-`end` stops every voice. The song ends at the tick every voice has stopped; that tick and those
-after it are not played. A row count other than `voices`, and a song loop `k` outside the rows,
+`end` stops every voice. The song ends at the sequencer tick every voice has stopped; the calls from that
+tick on are not played. A row count other than `voices`, and a song loop `k` outside the rows,
 is refused.
 
 `play(text, ticks=None)` plays an ending song to its end and refuses a looping one; with `ticks`
-it plays that many ticks or to the song's end, whichever is first.
+it plays that many frames or to the song's end, whichever is first.
 
 ### Orderlists
 
@@ -174,7 +197,7 @@ continues at entry `k` (refused outside its entries) and `end` stops the voice a
 does. The song ends at the tick every voice has stopped, and loops while any voice loops. Tempo,
 filter and volume commands act when the voice that carries them plays them.
 
-The compiled song's `periods` gives per voice `(k, tick, period)`: the voice starts its loop entry
+The compiled song's `periods` gives per voice `(k, tick, period)` (sequencer ticks): the voice starts its loop entry
 `k` at `tick` and its steps repeat every `period` ticks from there, the first span between two
 starts of entry `k` at the same tempo and swing phase (None for a voice that ends). The whole
 song's registers then repeat with the common multiple of the periods, from the latest `tick`;
@@ -214,13 +237,13 @@ the voice's last instrument. `-.iN`, `off.iN` and `on.iN` only set it.
 A note without `legato` sets the event note, clears the rows' relative and absolute note, sets
 the gate on and starts the voice's instrument, if it has one:
 
-- `ad` and `sr` take the instrument's;
+- a plain `ad` and `sr` take the instrument's (a binding of either binds its slot, `none` ends it);
 - each control program the instrument names starts in its layer (see [Layers](#layers));
 - each pulse program starts unless the event carries the `pw` flag, each filter program unless it
   carries `filter`;
 - each `freq` field binds its slot of the frequency, or with `none` ends its binding.
 
-Every binding of the instrument's fields, its `pw` and `filter` fields' too, starts phi at 0. No
+Every binding of the instrument's fields (`ad`, `sr`, `freq`, `pw`, `filter`), restarts phi at 0. No
 other binding ends: an instrument field it leaves out leaves what it would set as it is. A
 note with `legato` sets only the event note: the gate, the rows' note, the programs and the
 bindings are untouched, and no restart runs; it applies on its restart's last lookahead row's
@@ -261,7 +284,8 @@ Each voice has a program slot per layer of each kind, control, pulse and filter 
 without a `layers` line, see [Layers](#layers)); the filter runs one program per layer, so a
 filter program a voice starts stops the same layer of every other voice, as `filter:none` there
 would. A
-program started at tick `s` applies its first row at `s + wait`; each next row at the tick the
+program started at the slot's clock `s` (the call, but for the calls the slot was paused on, see
+[Holds](#holds)) applies its first row at `s + wait`; each next row at the clock the
 previous row applied plus its `hold` plus the row's `wait`; `hold` is 1 and `wait` 0 when left out.
 After its last row `end` stops the slot, leaving every cell as it is, and `{loop:k}` continues at
 row `k`, whose `wait` applies. A program of no rows stops the slot at once. A row due at a tick
@@ -280,22 +304,15 @@ nothing.
 | `gate` | 0 off, any other value on |
 | `note:+n`, `note:-n` | the relative note becomes `n`, clearing the absolute note |
 | `note:g5` | the absolute note becomes that note |
-| `ad`, `sr` | the envelope byte |
-| `pw:b`, `slot.pw:b` | binds the voice's pulse width slot to `b` (see [Bindings](#bindings)) |
-| `cut:b`, `slot.cut:b` | binds the cutoff's slot to `b`, reading this voice's notes |
-| `pw:none`, `cut:none`, `freq:none` | see [Stops](#stops) |
-| `pw:hold`, `cut:hold`, `freq:hold` | see [Stops](#stops) |
-| `pw:reset`, `cut:reset`, `freq:reset` | see [Stops](#stops) |
-| `res` | the resonance nibble, `$D417` bits 4-7 |
-| `route:m` | the routing, `$D417` bits 0-3, becomes `m` |
-| `route_on:m` | adds this voice's bit (`1 << (voice - 1)`) and `m` |
+| `ctrl ad sr res route mode vol` as a plain integer | the cell takes the integer wrapped to its mask (see [Cells](#cells)) |
+| `CELL:b`, `slot.CELL:b` for each of the ten cells | binds the cell's slot to `b` (see [Bindings](#bindings)); a song cell's slot reads this voice's notes |
+| `CELL:none`, `CELL:hold`, `CELL:reset` | see [Stops](#stops) |
+| `route_on:m` | adds this voice's bit (`1 << (voice - 1)`) and `m` to the `route` cell |
 | `route_off:m` | removes them; `route`, `route_on` and `route_off` are a row's routing keys, `row.route` naming each |
-| `mode` | `$D418` bits 4-7 become the value's bits 4-7 |
-| `freq:b`, `slot.freq:b` | binds the voice's frequency slot to `b`; an integer `n` is `F(N) + n` |
+| `freq:n`, `pw:n`, `cut:n` | an integer binds a constant: `freq:n` is `F(N) + n` |
 | `run:c3`, `run:pw2`, `run:f1` | starts that program at this tick in the control, pulse or filter slot, its kind's first layer's |
 | `b.run:c3` | ... in its kind's layer `b`; `run` repeats, each starting its program in the order written |
 | `run:arp(7,4)` | starts the call's program (see [Definitions](#definitions)) in its kind's slot |
-| `vol` | the volume, `$D418` bits 0-3 |
 
 Values wider than their field keep their low bits. In a program template's rows a parameter
 stands for the integer its call passes (see [Definitions](#definitions)).
@@ -324,10 +341,35 @@ refused.
   voice and `cut:hold` every filter layer (of every voice with `global:[cut]`).
 - **Events.** `row` and `row.KEY` name the rows of every control layer.
 
+## Holds
+
+`holds:{pw:[note],ctrl:[step],b:[legato]}` names, per program kind (`ctrl`, `pw`, `filter`: all
+its layers) or layer, events of the voice that started the program (a slot's `hold` events, see
+[Events](#events); `row` and `row.KEY` not for control programs). On a call at which one occurs the
+slot is paused: it is not visited, no row applies and the call does not count in its clock,
+which is the call less the calls the slot was paused on. A program started on a paused call counts
+from that call's clock, a row due on one applies on the next call that is not paused with a clock
+equal to its due clock. A filter program is paused on the events of the voice that started it.
+A pause changes nothing else: modulators fire, other kinds run and events apply.
+
+## Cells
+
+Ten cells take bindings, stops and slots; `unitracker_grammar.cells` holds the table of their
+scope, mask, phase and registers, and [format-2.5.md](https://github.com/anarkiwi/unitracker-grammar/blob/main/docs/format-2.5.md#cells)
+describes them. `freq`, `pw`, `ctrl`, `ad` and `sr` are a voice's, `cut`, `res`, `route`, `mode`
+and `vol` the song's. An integer of `ctrl ad sr res route mode vol` sets the cell now, wrapped to
+its mask, and ends and binds nothing: the slots the cell has keep their bindings and fire on the
+new value; an integer of `freq`, `pw` and `cut` is a binding. A restart's last lookahead row also
+applies the event's plain `ad`, `sr` and `ctrl`. A song cell's slot is bound by a voice and reads
+that voice's `N` and `n`; the owner of a song cell is the voice that last bound one of its slots
+(voice 1 for a default binding), a stop does not change it, and a cell with an owner fires its
+slots once in its phase (a cell of `global` at its owner's visit, a position no other phase can
+tell from the phase).
+
 ## Slots
 
-`slots:{cell:{name:{mod:m,hold:[...],reset:[...]},...},...}` names, per cell (`freq`,
-`pw`, `cut`), its slots in firing order, each with its default binding `m` and the events it
+`slots:{cell:{name:{mod:m,hold:[...],reset:[...]},...},...}` names, per cell (any of the ten),
+its slots in firing order, each with its default binding `m` and the events it
 holds and resets on (see [Events](#events)), any of them left out. A cell left out has one
 slot, named after the cell, with neither. A cell that names a slot twice, and a `row.KEY` whose
 `KEY` is no row key, is refused.
@@ -365,21 +407,23 @@ cutoff is the voice whose notes and events it reads.
 
 ## Modulators
 
-A modulator `e` drives one cell: a voice's frequency (16 bits), a voice's pulse width (12 bits)
-or the one cutoff (11 bits). Each tick, each cell's slots fire in their order. A bound slot first
+A modulator `e` drives one cell (see [Cells](#cells)). In the cell's phase its slots fire in their
+order. A bound slot first
 takes phi = 0 on its reset events, then, but on its hold events, fires
-`v' = e(v, phi, N, n)` wrapped to the cell's width, `v` the value the slot before it left (the
+`v' = e(v, phi, N, n)` wrapped to the cell's mask, `v` the value the slot before it left (the
 cell's value for the first), then phi + 1. A held or unbound slot passes `v` through and its phi does
 not advance. The cell takes the last slot's value. A frequency with no bound slot is `F(N)`, but
-after a `hold` (see [Stops](#stops)); a pulse width or cutoff with none holds its value.
+after a `hold` (see [Stops](#stops)); any other cell with none holds its value.
 
 `N` is the sounding note and `n` the event note (see [Notes](#notes)), each 0 where the voice has
 none, of the voice that bound the slot. Expressions are compiled by `unitracker_grammar.expr`
-with `zero=True`. They are Python integers: `//` and `%` are floored, and 0 when the divisor is
-0; a comparison is 1 or 0; `F(k)` is `unitracker_grammar.frequency(k, clock_hz, rounding)`,
-`R(440 * 2**((k - 57)/12) * 2**24 / clock_hz)` with `R` the clock's `rounding`, to the nearest
-word (`round`, the default) or down (`floor`), for every note, below C0 too, and 0 where the word rounds to 0 or overflows; `T[k]` is 0 outside the table, and a table the document does not
-define is refused.
+with `zero=True`; the operators and functions are the grammar's
+([Expressions](https://github.com/anarkiwi/unitracker-grammar/blob/main/docs/format-2.5.md#expressions)).
+They are Python integers: `//` and `%` are floored, and 0 when the divisor is 0, as is a shift
+by a negative count; a comparison is 1 or 0; `F(k)` is `unitracker_grammar.frequency(k, clock_hz)`,
+`round(440 * 2**((k - 57)/12) * 2**24 / clock_hz)` to the nearest word, for every note, below C0
+too, and 0 where the word rounds to 0 or overflows; `T[k]` is 0 outside the table, and a table the
+document does not define is refused.
 
 ## Code modulators
 
@@ -387,19 +431,19 @@ A code template is an NMOS 6502 routine (`unitracker_grammar.code`) fired where 
 would be; its parameters are its immediates, bound by a call as an expression template's. Each
 call, template and cell is assembled once (`vib(0,4,32)` on `freq` and on `pw` are two
 routines). Each
-voice has, per cell of the `state` line, its own copy of the cell's variables, and the song one
-copy of the cutoff's; every byte is 0 at tick 0, and only code reads and writes it. A firing runs
-on the copy of the voice that bound the slot (the one copy for `cut`), so the state persists
+voice has, per voice cell of the `state` line, its own copy of the cell's variables, and the song
+one copy of each song cell's; every byte is 0 at tick 0, and only code reads and writes it. A firing
+runs on the copy of the voice that bound the slot (the one copy for a song cell), so the state persists
 across firings, slots, bindings and notes; phi restarts as for any modulator, the state never does.
 
 | symbol | bytes | at entry | at exit |
 |---|---|---|---|
-| `v` | 2 (`v`, `v+1`) | the value the slot before left | wrapped to the cell's width, the slot's value |
+| `v` | 2 (`v`, `v+1`) | the value the slot before left | wrapped to the cell's mask, the slot's value |
 | `phi` | 2 | phi mod 65536 | discarded |
 | `nn`, `ne` | 1 each | `N & 255`, `n & 255` | discarded |
 | a state variable of the slot's cell | its size | the voice's copy | stored back to it |
 | `T.lo`, `T.hi` | per entry | bits 0-7, 8-15 of entry `k` at `+k`; 0 past the table; nothing before entry 0, so a negative offset is refused | discarded |
-| `F.lo`, `F.hi` | 384 each | bits 0-7, 8-15 of `F(k)` at `clock_hz` and `rounding` at `+k`, `unitracker_grammar.frequency(k, clock_hz, rounding)` for k -128-255 (k < 0 at `-1` to `-128`, laid out before entry 0: `F.lo-24,y` reads `F(y - 24)`) | discarded |
+| `F.lo`, `F.hi` | 384 each | bits 0-7, 8-15 of `F(k)` at `clock_hz` at `+k`, `unitracker_grammar.frequency(k, clock_hz)` for k -128-255 (k < 0 at `-1` to `-128`, laid out before entry 0: `F.lo-24,y` reads `F(y - 24)`) | discarded |
 
 At entry A, X and Y are 0, the flags are clear but I and the stack is empty. The routine runs
 from its first statement to an `rts` on an empty stack; every other write is discarded at exit.
@@ -415,9 +459,10 @@ running outside the routine's code. A looping song with a code modulator has no 
 
 ## Events
 
-A slot's `hold` and `reset` events name ticks of the voice that bound the slot:
+A slot's `hold` and `reset` events, and a pause's (see [Holds](#holds)), name calls of the voice that
+bound the slot; the events of a step (`step`, `last`, `read`, `note`, `legato`) are full calls:
 
-| event | the ticks of a voice it names |
+| event | the calls of a voice it names |
 |---|---|
 | `step` | the first tick of each of its steps, the steps of an event's `*k` among them |
 | `last` | the first tick of the last step of each phrase it plays |
@@ -427,7 +472,7 @@ A slot's `hold` and `reset` events name ticks of the voice that bound the slot:
 | `row` | a tick a row of its control program that sets a key other than `ctrl` and `gate` applies (a restart's rows are not its control program's) |
 | `row.KEY` | a tick a row of its control program that sets `KEY` applies; `row.freq` a row binding any slot of `freq` |
 
-`e-k` is the tick `k` ticks before each tick of `e` (`row` and `row.KEY` take no `-k`). The init
+`e-k` is the call `k` calls before each call of `e` (`row` and `row.KEY` take no `-k`). The init
 row's events are none of these.
 
 ## Commands
@@ -440,15 +485,9 @@ note, in grammar order, a cell's commands in the order written.
 |---|---|
 | `run:c3`, `run:pw2`, `run:f1`, `b.run:c3` | starts that program in the slot its name's kind and its prefix's layer name; refused on a voice that has no instrument yet |
 | `run:none`, `b.run:none` | stops the control layer its prefix names, else the first |
-| `pw:b`, `slot.pw:b` | binds the pulse width's slot to `b`: an integer, a call, an `asm{...}` body or a quoted expression |
-| `ad:n`, `sr:n` | the envelope byte |
-| `ctrl:n` | the control byte, as a row's `ctrl` |
-| `res:r`, `route:m` | as the row keys `res` and `route:m` |
-| `mode:n`, `vol:n` | as the row keys |
-| `cut:b`, `slot.cut:b` | binds the cutoff's slot to `b`, reading this voice's notes |
-| `pw:none`, `cut:none`, `freq:none` | see [Stops](#stops) |
-| `pw:hold`, `cut:hold`, `freq:hold` | see [Stops](#stops) |
-| `pw:reset`, `cut:reset`, `freq:reset` | see [Stops](#stops) |
+| `CELL:b`, `slot.CELL:b` | binds the cell's slot to `b`: an integer of `freq`, `pw` or `cut`, a call, an `asm{...}` body or a quoted expression; a song cell's reads this voice's notes |
+| `ctrl:n`, `ad:n`, `sr:n`, `res:n`, `route:n`, `mode:n`, `vol:n` | a plain integer, as the row key |
+| `CELL:none`, `CELL:hold`, `CELL:reset` | see [Stops](#stops) |
 | `tempo:n`, `tempo:a/b`, `vtempo:...` | see [Time](#time) |
 | `freq:n`, `freq:+n`, `freq:-n` | binds the frequency's slot to `F(N) + n` |
 | `freq:b`, `slot.freq:b` | ... to `b`, a call, an `asm{...}` body or a quoted expression |
@@ -460,9 +499,9 @@ A command's binding lasts as any other (see [Bindings](#bindings)).
 
 ## Stops
 
-Each modulated cell, `freq`, `pw` and `cut`, takes the same three stops, as a row key and as a
-command, `none` also as an instrument's field; the cell's program slot is the pulse slot for `pw`,
-the filter slot for `cut` and none for `freq`.
+Each of the ten cells takes the same three stops, as a row key and as a command, `none` also as an
+instrument's `ad` and `sr` field; the cell's program slot is the pulse slot for `pw`, the filter slot for
+`cut` and none for the others.
 
 | stop | meaning |
 |---|---|
@@ -471,35 +510,37 @@ the filter slot for `cut` and none for `freq`.
 | `reset`, `slot.cell:reset` | phi of the slot's binding (its prefix's, else the first) is 0 on that tick, whichever voice bound it; the binding, its code state and an unbound slot are untouched. After a binding that keeps phi (the same modulator again) it restarts it: `{pw:ptab(3),pw:reset}` |
 
 After a `hold` the frequency holds: it is not `F(N)` until a note starts an instrument, a `freq`
-slot is bound or a `none` of `freq`. The cutoff's `none` and `hold` end its bindings only where
-this voice bound them, and a filter program a voice starts ends the cutoff bindings the other voices' rows made.
-With `global:[cut]` the cutoff belongs to the song: its `none` and `hold` from any voice end
-the bindings whichever voice made them, and its `hold` stops the filter program whichever voice
+slot is bound or a `none` of `freq`. A song cell's `none` and `hold` end its bindings only where
+this voice bound them, and a filter program a voice starts ends the cutoff bindings the other voices' rows made
+(and no other cell's). With a cell in `global` it belongs to the song: its `none` and `hold` from any voice end
+the bindings whichever voice made them, and the cutoff's `hold` stops the filter program whichever voice
 started it; a binding still reads the notes and events of the voice that bound it.
 
 ## Order within a tick
 
-Each tick runs its phases in order, each over the voices in voice order, then writes the
+Each call runs its phases in order, each over the voices in voice order, then writes the
 registers. The phases are:
 
 | phase | what it runs |
 |---|---|
 | `events` | at tick 0 the `init` events; the voice's restart rows due this tick but its read row, then its events due this tick |
 | `ctrl`, `pulse`, `filter` | the control, pulse or filter program slots: each layer in declared order, over the voices (see [Layers](#layers)) |
-| `freq`, `pw`, `cut` | the cell's modulator slots in their order (see [Modulators](#modulators)); `cut` once, for the one cutoff |
+| `freq`, `pw`, `cut`, `ctl`, `ad`, `sr`, `res`, `route`, `mode`, `vol` | the cell's modulator slots in their order (see [Modulators](#modulators)); `ctl` is the `ctrl` cell's; a song cell once |
 | `read` | the read row: a note's restart's first lookahead row, on its tick, the step's read tick (see [Hard restart](#hard-restart)) |
 
-The order is `[events,ctrl,pulse,filter,freq,pw,cut]`, the read row running within
-`events`, unless the document's `order` line names every phase, `read` among them, exactly once;
-any other `order` line is refused. A program or binding a phase starts after its own slot's
+The order is `[events,ctrl,pulse,filter,freq,pw,cut,ctl,ad,sr,res,route,mode,vol]`, the read row
+running within `events`, unless the document's `order` line names each of `events ctrl pulse filter
+freq pw cut read` exactly once and each cell phase at most once; any other `order` line is
+refused. A cell phase the line leaves out runs right after the nearest earlier of the sequence
+`cut ctl ad sr res route mode vol`, wherever the line puts that one. An `events` and `read` phase
+does not run on a reduced call. A program or binding a phase starts after its own slot's
 phase has run this tick applies from the next tick, and a `row` or `row.KEY` event is a control
 program row the `ctrl` phase applied before that tick's modulator phase.
 
 ## Registers
 
-Each tick writes the registers the cells made `lag` ticks before (0 without a `lag` line); the
-first `lag` ticks write the `regs` line's values (0 without one). The song's ticks are the same
-in number, the last `lag` ticks' cells never written.
+Each frame writes the registers the cells made `lag` calls before its last call (0 without a
+`lag` line); a call before the first is the `regs` line's values (0 without one).
 
 | register | value |
 |---|---|

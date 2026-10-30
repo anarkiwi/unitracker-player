@@ -1,6 +1,8 @@
 """Format 2.4's prelude hard restart: ``restart:hr(lead,ad,sr,test,stop)`` plays as the rows it
 stands for (docs/semantics.md, Hard restart)."""
 
+import re
+
 import numpy as np
 import pytest
 from song import doc, reg
@@ -14,7 +16,7 @@ PHRASE = "[C4.i1,-*3,D,-*2,E,-,F,-*5]"
 def written(restart: str, version: str = "2.3") -> str:
     """The document of an instrument whose restart is ``restart``."""
     text = doc(PHRASE, f"{{ad:9,sr:240,{CTRL},restart:{restart}}}", head="tempo:3\n")
-    return text.replace("unitracker:2.3", f"unitracker:{version}", 1)
+    return re.sub(r"^unitracker:\S+", f"unitracker:{version}", text)
 
 
 @pytest.mark.parametrize(

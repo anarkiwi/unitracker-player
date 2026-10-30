@@ -132,4 +132,4 @@ def test_a_compiled_expression_carries_its_node():
     song = load(doc(ins="{ctrl:[{ctrl:65},end],pw:10*phi + 1}"))
     player = Player(song)
     player.step()
-    assert ast.unparse(player.voices[0].pw_mods[0][0].node) == "10 * phi + 1"
+    assert ast.unparse(player.voices[0].mods["pw"][0][0].node) == "10 * phi + 1"

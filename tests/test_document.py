@@ -19,10 +19,18 @@ def test_the_header_is_read_with_its_values():
     )
     document = read(text)
     header = document.header
-    assert header.meta == {"title": "It's", "author": 'A "B"', "released": "1987"}
-    assert (header.cycles_per_tick, header.clock_hz) == (17095, 1022727)
-    assert (header.voices, header.tempo, header.slots) == (2, (6, 7), {})
-    assert document.tables == {"W": (1, 2, 3)}
+    assert header.meta == (
+        ("title", "'It''s'"),
+        ("author", '"A \\"B\\""'),
+        ("released", "1987"),
+    )
+    assert (header.clock, header.voices, header.tempo, header.slots) == (
+        (17095, 1022727),
+        2,
+        (6, 7),
+        None,
+    )
+    assert document.tables == (("W", (1, 2, 3)),)
 
 
 @pytest.mark.parametrize(
@@ -105,7 +113,14 @@ def test_a_phrase_note_takes_the_previous_note_s_octave():
     )
     assert "p1:[C4.i1,E,-,g*2,C5,d]" in text and "[a3.i1,B]+2" in text
     document = read(text)
-    assert [e.note for e in document.phrases["p1"]] == ["C4", "E4", "-", "G#4", "C5", "D#5"]
-    inline = document.timeline[0][1]
+    assert [e.note for e in document.records("phrase")["p1"]] == [
+        "C4",
+        "E4",
+        "-",
+        "G#4",
+        "C5",
+        "D#5",
+    ]
+    inline = document.rows[0].play[1]
     assert [e.note for e in inline.phrase] == ["A#3", "B3"] and inline.transpose == 2
     assert read(text.replace("C4.i1,E,", "C4.i1,E4,")) == document

@@ -4,7 +4,7 @@ The generic player of canonical [unitracker](https://github.com/anarkiwi/unitrac
 and their builder into standalone PSID `.sid` files.
 It reads a document with the grammar of
 [unitracker-grammar](https://github.com/anarkiwi/unitracker-grammar) and plays it to the state of
-the 25 SID registers (`$D400`-`$D418`) at the end of each tick. It knows only the document: its
+the 25 SID registers (`$D400`-`$D418`) at the end of each frame. It knows only the document: its
 instruments, programs, expressions, phrases and timeline, and the note table `F(k)` at its clock.
 
 ## Install
@@ -18,18 +18,18 @@ pip install "unitracker-player @ git+https://github.com/anarkiwi/unitracker-play
 ```python
 from unitracker_player import load, play, Player
 
-frames = play(text)               # np.uint8 array (ticks, 25), to the end of an ending song
-frames = play(text, ticks=3000)   # a looping song needs ticks
+frames = play(text)               # np.uint8 array (frames, 25), to the end of an ending song
+frames = play(text, ticks=3000)   # 3000 frames; a looping song needs ticks
 song = load(text)                 # parse and compile once; play(song, ...) reuses it
 player = Player(song)
-regs = player.step()              # the 25 registers after one tick; None once the song ends
-player.regs                       # the register file the last tick wrote, one store per register
+regs = player.step()              # the 25 registers after one frame; None once the song ends
+player.regs                       # the register file the last call wrote, one store per register
 ```
 
-It plays formats 2.3 and 2.4, the grammar's formats: their sugar (prelude templates, chord
+It plays formats 2.3 to 2.5, the grammar's formats: their sugar (prelude templates, chord
 names, instrument and phrase templates, groups, sections, first-use definitions) as the
 grammar's core expansion (`unitracker_grammar.expand.core`), and once bindings (`pw:800!`),
-`lag:k`, `global:[cut]`, and 2.4's program layers (`layers:{ctrl:[a,b]}`, `b.ctrl:c7`,
+`lag:k`, `calls`, `holds`, `global:[cut,res,route,mode,vol]`, the cells `ctrl ad sr res route mode vol`, and 2.4's program layers (`layers:{ctrl:[a,b]}`, `b.ctrl:c7`,
 `b.run:c7`) and per-voice orderlists (` - voice:[p1,p2+2|loop:1]`) itself; 2.4's prelude hard restart
 (`restart:hr(2,15,0)`) plays as the restart rows it stands for. Code templates run as 6502 routines on a
 [jennings](https://pypi.org/project/jennings/) MPU, with per-voice state from the document's
@@ -43,12 +43,12 @@ Any definition may also stand inline at its one use (`C4.{ad:9}`, `run:pw[{pw:5}
 form. A cell's repeated keys and commands apply in the order written, `reset` restarts a
 binding's phi (`C4 pw:ptab(3) pw:reset`), and a `regs` line gives the 25 registers before tick 0.
 
-`read(text)` returns the document as plain dataclasses. A text outside the grammar raises
+`read(text)` returns the document as unitracker-grammar's model (`unitracker_grammar.document.Document`) after its `expand.expanded`. A text outside the grammar raises
 `unitracker_grammar.CanonicalError`; a document the player refuses raises `PlayError`.
 
 ```sh
 unitracker-play song.yaml --ticks 3000 --out frames.npz   # array "frames"
-unitracker-play song.yaml --out frames.csv                # one row per tick, d400..d418
+unitracker-play song.yaml --out frames.csv                # one row per frame, d400..d418
 unitracker-play song.yaml                                 # CSV to stdout
 ```
 

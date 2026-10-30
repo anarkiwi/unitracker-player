@@ -18,7 +18,7 @@ def test_a_cell_s_commands_apply_in_the_order_written(commands, expected):
     """``hold`` then a binding stops the note's pulse program and binds; the binding then
     ``hold`` ends it, so the cell keeps its value."""
     text = doc(f"[C4.i1{commands},-*3]", ins=PROGRAM)
-    assert read(text).phrases["p1"][0].commands == tuple(
+    assert read(text).records("phrase")["p1"][0].commands == tuple(
         ("pw", 2000 if c == "2000" else c) for c in commands.replace(" pw:", " ").split()
     )
     assert pulse(play(text, 8)) == expected
@@ -27,7 +27,7 @@ def test_a_cell_s_commands_apply_in_the_order_written(commands, expected):
 def test_a_row_s_repeated_keys_apply_in_the_order_written():
     ctrl = "[{ctrl:65,note:+0,pw:hold,pw:2000},end]"
     text = doc(ins=f"{{ad:9,ctrl:{ctrl},pw:[{{pw:100}},{{wait:2,pw:3000}},end]}}")
-    row = read(text).instruments["i1"].ctrl.rows[0]
+    row = read(text).records("ins")["i1"].get("ctrl").rows[0]
     assert [k for k, _ in row.keys] == ["ctrl", "note", "pw", "pw"]
     assert pulse(play(text, 8)) == [2000] * 8
 

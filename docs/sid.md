@@ -7,7 +7,7 @@ plays the registers of [the player](semantics.md) on a C64, tick for tick.
 
 | step | module | |
 |---|---|---|
-| render | `render.py` | the player's 25 registers per tick, to the song's end, or for a looping song to the first tick its whole state recurs at its loop row |
+| render | `render.py` | the player's 25 registers per frame, to the song's end, or for a looping song to the first frame its whole state recurs at its loop row |
 | streams | `streams.py` | each cell that is ever nonzero as runs of a constant delta |
 | grammar | `streams.py` | Re-Pair over every stream at once, then each rule cheaper copied than called inlined |
 | assemble | `sid.py`, `asm/` | the streams' tick unrolled, the grammar as bytes, the playroutine, linked by llvm-mos |

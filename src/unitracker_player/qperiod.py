@@ -95,7 +95,9 @@ class _Finder:
             return _periodic(*kids)
         if op in ("abs", "min", "max") or op in ("==", "!=", "<", "<=", ">", ">="):
             return self._shape(node, op, kids)
-        return self._lookup(node, op, kids)
+        if op in ("F", "T"):
+            return self._lookup(node, op, kids)
+        return _bits(op, kids, const)
 
     def _shape(self, node, op, kids) -> Sig | None:
         if len(kids) == 2:
@@ -153,10 +155,37 @@ def _size(ftable, namespace, node) -> tuple[int, int] | None:
     return (0, len(table.args[0])) if table is not None else None
 
 
-def _periodic(a: Sig, b: Sig) -> Sig | None:
-    if a.d or b.d:
+def _periodic(*sigs: Sig) -> Sig | None:
+    if any(s.d for s in sigs):
         return None
-    return Sig(max(a.p0, b.p0), math.lcm(a.q, b.q), 0)
+    return Sig(max(s.p0 for s in sigs), math.lcm(*(s.q for s in sigs)), 0)
+
+
+def _wrapped(a: Sig, bits: int) -> Sig:
+    """``a`` kept to its low ``bits`` bits: periodic once ``d`` steps a multiple of 2**bits."""
+    return Sig(a.p0, a.q * ((1 << bits) // math.gcd(a.d, 1 << bits)), 0)
+
+
+def _bits(op: str, kids: list, const: list) -> Sig | None:
+    """The signature of a bitwise, logic or wrapping operator: a mask of low bits and the
+    wraps are periodic, a shift by a literal and ``~`` are linear in their operand, the rest
+    periodic where every operand is."""
+    wraps = {"lo": 8, "u8": 8, "sx": 8, "u16": 16, "hi": 16}
+    a = kids[0]
+    if op in wraps:
+        return _wrapped(a, wraps[op])
+    if op == "~":
+        return Sig(a.p0, a.q, -a.d)
+    if op in ("<<", ">>"):
+        if const[1] is None or const[1] < 0:
+            return None
+        grown = a.q << const[1]
+        return Sig(a.p0, a.q, a.d << const[1]) if op == "<<" else Sig(a.p0, grown, a.d)
+    if op == "&":
+        for sig, value in zip(kids, const[::-1]):
+            if value is not None and value >= 0 and not value & (value + 1) and value:
+                return _wrapped(sig, value.bit_length())
+    return _periodic(*kids)
 
 
 def _minimise(values: list, s: Sig) -> Sig:

@@ -6,11 +6,11 @@ from song import cutoff, doc, freq, pulse
 from unitracker_grammar import CanonicalError
 from unitracker_grammar import frequency as F
 from unitracker_grammar.code import CodeError
+from unitracker_grammar.document import Code, Expr
 from unitracker_grammar.expr import ExpressionError
 
 from unitracker_player import PlayError, play, read
 from unitracker_player.cli import sid_main
-from unitracker_player.document import Code, Expr
 from unitracker_player.render import RenderError, render
 
 GATE = "ctrl:[{ctrl:65,note:+0},end]"
@@ -55,11 +55,10 @@ def test_the_state_line_and_code_templates_are_read():
     head = "state:{freq:{t:1},cut:{q:2,r:1}}\n"
     text = doc(head=head, mods={"cnt()": block(COUNT), "e(s)": "v + s"})
     document = read(text)
-    assert document.header.state == {"freq": (("t", 1),), "cut": (("q", 2), ("r", 1))}
-    assert isinstance(document.templates["cnt"], Code)
-    assert isinstance(document.templates["e"], Expr)
-    assert len(document.templates["cnt"].statements) == 6
-    assert document.signatures == {"cnt": (), "e": ("s",)}
+    assert document.header.state == (("freq", (("t", 1),)), ("cut", (("q", 2), ("r", 1))))
+    mods = dict(document.mods)
+    assert isinstance(mods["cnt()"], Code) and isinstance(mods["e(s)"], Expr)
+    assert len(mods["cnt()"].statements) == 6
 
 
 def test_a_state_variable_declared_twice_is_refused():
@@ -228,24 +227,19 @@ CLOCK = "clock:{cycles_per_tick:19656,clock_hz:985000}\n"
 TABLE = "ldx nn\nlda F.lo,x\nsta v\nlda F.hi,x\nsta v+1\nrts"
 
 
-@pytest.mark.parametrize(
-    "clock, hz, rounding",
-    [
-        (CLOCK, 985000, "round"),
-        ("clock:{cycles_per_tick:19656,clock_hz:985240,rounding:floor}\n", 985240, "floor"),
-    ],
-)
-def test_code_reads_the_note_table_at_the_document_s_clock(clock, hz, rounding):
-    """A routine reading F.lo and F.hi at nn plays F(N) at clock_hz with its rounding, 0 where
-    the word overflows, as the expression F(N) and a note's own frequency do."""
+@pytest.mark.parametrize("hz", [985000, 1000000])
+def test_code_reads_the_note_table_at_the_document_s_clock(hz):
+    """A routine reading F.lo and F.hi at nn plays F(N) at clock_hz, 0 where the word
+    overflows, as the expression F(N) and a note's own frequency do."""
+    clock = f"clock:{{cycles_per_tick:19656,clock_hz:{hz}}}\n"
     phrase, head = "[C0.i1,A4.i1,C7.i1,B.i1]", clock + "tempo:1\n"
     ins = f"{{ad:9,sr:240,{GATE},freq:nt()}}"
     coded = doc(phrase, ins=ins, head=head, mods={"nt()": block(TABLE)})
     ins = f"{{ad:9,sr:240,{GATE},freq:F(N)}}"
     expressed = doc(phrase, ins=ins, head=head)
     plain = doc(phrase, ins=f"{{ad:9,sr:240,{GATE}}}", head=head)
-    expected = [F(k, hz, rounding) for k in (0, 57, 84, 95)]
-    assert expected[-1] == 0 and expected[1] != F(57) and expected[1] == F(57, hz) - (hz > 985000)
+    expected = [F(k, hz) for k in (0, 57, 84, 95)]
+    assert expected[-1] == 0 and expected[1] != F(57)
     assert freq(play(coded, 4)) == freq(play(expressed, 4)) == freq(play(plain, 4)) == expected
 
 
