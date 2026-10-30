@@ -9,7 +9,7 @@ from pathlib import Path
 from unitracker_grammar import NTSC_HZ, PAL_HZ
 
 from unitracker_player import mos, streams
-from unitracker_player.document import read
+from unitracker_player.document import meta_texts, read
 from unitracker_player.player import PlayError
 from unitracker_player.render import Render, render
 
@@ -198,4 +198,4 @@ def build(text: str, ticks: int | None = None, load: int = LOAD, progress: bool 
     ``ticks`` ticks then silent when given."""
     doc = read(text)
     p = plan(render(doc, ticks, progress))
-    return psid(assemble(p, load), dict(doc.header.meta), doc.header.clock_hz or PAL_HZ, load)
+    return psid(assemble(p, load), meta_texts(doc), (doc.header.clock or (0, PAL_HZ))[1], load)

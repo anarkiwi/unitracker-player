@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from unitracker_grammar.expr import indexed
 
-from unitracker_player.compiler import _Compiler, compile_document
+from unitracker_player.compiler import compile_document
 from unitracker_player.player import REGISTERS, Player, PlayError, _Voice
 from unitracker_player.qperiod import period
 
@@ -27,34 +27,16 @@ class Render:
     loop: int | None
 
 
-class _Recording(_Compiler):
-    """The player's compiler, remembering each compiled expression's node."""
-
-    nodes: dict = {}
-
-    def fn(self, expr, freq: bool = False, key=None):
-        out = super().fn(expr, freq, key)
-        self.nodes[id(out)] = expr.node if not freq else self._node(expr)
-        return out
-
-    @staticmethod
-    def _node(expr):
-        from unitracker_player.expr import constant, offset  # pylint: disable=C0415
-
-        value = constant(expr.node)
-        return offset(value) if value is not None else expr.node
-
-
 class _Periods:
     """Each expression's period in phi, proved once; a modulator's phi reduced by it."""
 
-    def __init__(self, nodes: dict, namespace: dict):
-        self.nodes, self.namespace, self.memo = nodes, namespace, {}
+    def __init__(self, namespace: dict):
+        self.namespace, self.memo = namespace, {}
 
     def phi(self, fn, phi: int) -> int:
         """``phi`` reduced by ``fn``'s period, where it has one and phi is past its start."""
         if id(fn) not in self.memo:
-            node = self.nodes.get(id(fn))
+            node = getattr(fn, "node", None)
             self.memo[id(fn)] = None if node is None else period(node, self.namespace)
         found = self.memo[id(fn)]
         if found is None or phi < found[0]:
@@ -80,19 +62,22 @@ def _freeze(obj, t: int):
     return ("id", id(obj))
 
 
-def _voice(voice: _Voice, t: int, periods: _Periods) -> tuple:
+def _voice(voice: _Voice, c: int, periods: _Periods) -> tuple:
     state = dict(vars(voice))
-    state["slots"] = [[p, i, due - t if p is not None else 0] for p, i, due in voice.slots]
-    for name in ("freq_mods", "pw_mods"):
-        state[name] = [periods.mod(m) for m in state[name]]
-    return _freeze(state, t)
+    clocks = [c - lost for lost in state.pop("lost")]
+    state["slots"] = [
+        [p, i, due - k if p is not None else 0] for (p, i, due), k in zip(voice.slots, clocks)
+    ]
+    state["mods"] = {cell: [periods.mod(m) for m in mods] for cell, mods in voice.mods.items()}
+    return _freeze(state, c)
 
 
 def snapshot(player: Player, periods: _Periods) -> tuple:
-    """The player's state at its current tick, the registers it has yet to write included,
-    every tick made relative to it and every modulator's phi reduced by its expression's
-    period."""
-    t, seq = player.tick, player._seq  # pylint: disable=protected-access
+    """The player's state at its current call, the registers it has yet to write included, every
+    call and sequencer tick made relative to it and every modulator's phi reduced by its
+    expression's period."""
+    c, seq = player.call, player._seq  # pylint: disable=protected-access
+    stick, full = player._stick, player.song.full  # pylint: disable=protected-access
     sequencer = (
         seq.tempo,
         seq.phase,
@@ -100,22 +85,23 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
         seq.pos,
         seq.transpose,
         seq.rest,
-        [n - t for n in seq.next],
+        [n - stick for n in seq.next],
         seq.stopped,
         seq.row,
         seq.entry,
+        c % len(full) if full else 0,
     )
     pending = [
-        {k - t: v for k, v in d.items() if v}
+        {k - c: v for k, v in d.items() if v}
         for d in (player._events, player._lookahead)  # pylint: disable=protected-access
     ]
-    globals_ = (player.cut, player.res, player.route, player.mode, player.vol)
-    mods = tuple(periods.mod(m) for m in player.cut_mods)
-    voices = tuple(_voice(v, t, periods) for v in player.voices)
+    mods = {cell: tuple(periods.mod(m) for m in ms) for cell, ms in player.song_mods.items()}
+    voices = tuple(_voice(v, c, periods) for v in player.voices)
     ins = player._ins  # pylint: disable=protected-access
-    held = {k: {x - t for x in v} for k, v in player._held.items() if v}  # pylint: disable=W0212
+    held = {k: {x - c for x in v} for k, v in player._held.items() if v}  # pylint: disable=W0212
     delay = tuple(map(tuple, player._delay))  # pylint: disable=protected-access
-    return _freeze((voices, globals_, mods, sequencer, ins, pending, held, delay), t)
+    cells = (player.chip, player.owner, mods)
+    return _freeze((voices, cells, sequencer, ins, pending, held, delay), c)
 
 
 def render(doc, ticks: int | None = None, progress: bool = False) -> Render:
@@ -124,14 +110,13 @@ def render(doc, ticks: int | None = None, progress: bool = False) -> Render:
     an orderlist song's first looping voice's loop entry); a looping song with a code modulator
     needs ``ticks``."""
     # pylint: disable=too-many-locals
-    compiler = type("Recording", (_Recording,), {"nodes": {}})
-    song = compile_document(doc, compiler)
+    song = compile_document(doc)
     if ticks is None and song.looping and song.code:
         raise RenderError("a looping song with a code modulator: its loop needs --ticks")
-    namespace = {"_F": song.table, "_T": {k: indexed(v) for k, v in doc.tables.items()}}
-    periods = _Periods(compiler.nodes, namespace)
+    namespace = {"_F": song.table, "_T": {k: indexed(v) for k, v in doc.tables}}
+    periods = _Periods(namespace)
     player, rows = Player(song), []
-    starts = player._seq.passes  # pylint: disable=protected-access
+    starts = player.passes
     seen: dict = {}
     with tqdm(total=ticks, unit="tick", disable=not progress) as meter:
         while ticks is None or len(rows) < ticks:
@@ -140,7 +125,7 @@ def render(doc, ticks: int | None = None, progress: bool = False) -> Render:
                 return Render(np.array(rows, dtype=np.uint8).reshape(-1, REGISTERS), None)
             rows.append(regs)
             meter.update()
-            if ticks is None and starts and starts[-1] < player.tick:
+            if ticks is None and starts and starts[-1] < player.ticks_played:
                 state = snapshot(player, periods)
                 starts.clear()
                 if state in seen:

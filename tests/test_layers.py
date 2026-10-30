@@ -4,7 +4,6 @@ and run in declared order (docs/semantics.md, Layers)."""
 import numpy as np
 import pytest
 from song import cutoff, doc, freq, pulse, reg
-from unitracker_grammar import CanonicalError
 from unitracker_grammar import frequency as F
 from unitracker_grammar.document import printed, read
 
@@ -139,7 +138,7 @@ def test_a_pulse_field_s_prefix_names_a_layer_or_else_a_slot():
         ("ctrl:[a,b]", "{c.ctrl:[{ad:1},end]}", "", PlayError, "no layer c"),
         ("ctrl:[a,a]", "{ctrl:[{ad:1},end]}", "", PlayError, "a layer twice"),
         ("pw:[s,y]", "{pw:5}", "slots:{pw:{s:{}}}\n", PlayError, "both a pw layer and a slot"),
-        ("ctrl:[a,b]", "{b.ctrl:[{ad:1},end],b.ctrl:[{ad:2},end]}", "", CanonicalError, "twice"),
+        ("ctrl:[a,b]", "{b.ctrl:[{ad:1},end],b.ctrl:[{ad:2},end]}", "", PlayError, "twice"),
     ],
 )
 def test_a_layer_must_be_declared_once_and_started_once(layers, ins, slots, error, match):

@@ -35,6 +35,18 @@ def _holds(text: str, found, rng: random.Random) -> bool:
         ("v + F(-100 - phi)", (10, 1)),
         ("v + phi", None),
         ("v * (phi // 4)", None),
+        ("v + (phi & 3)", (0, 4)),
+        ("lo(phi*3)", (0, 256)),
+        ("u8(phi) ^ 5", (0, 256)),
+        ("ite(phi % 4 < 2,v,7)", (0, 4)),
+        ("v ^ (phi*5 & 15)", (0, 16)),
+        ("hi(phi*300)", (0, 16384)),
+        ("v + ((phi >> 1) & 3)", (0, 8)),
+        ("v ^ (!(phi % 3))", (0, 3)),
+        ("~(phi % 5) + v", (0, 5)),
+        ("v + ((phi % 3) || (phi % 4))", (0, 12)),
+        ("(phi << 2) | 1", None),
+        ("v + (phi >> 1)", None),
     ],
 )
 def test_period(text, expected):
@@ -44,11 +56,29 @@ def test_period(text, expected):
         assert _holds(text, found, random.Random(text))
 
 
+BITS = {
+    "&": "(({a}) & ({b}))",
+    "|": "(({a}) | ({b}))",
+    "^": "(({a}) ^ ({b}))",
+    "<<": "(({a}) << {k})",
+    ">>": "(({a}) >> {k})",
+    "~": "(~({a}))",
+    "lo": "lo({a})",
+    "hi": "hi({a})",
+    "mask": "(({a}) & {k})",
+    "ite": "ite({a},{b},1)",
+    "not": "(!({a}))",
+    "or": "(({a}) || ({b}))",
+}
+
+
 def _random(rng: random.Random, depth: int) -> str:
     if depth == 0 or rng.random() < 0.3:
         return rng.choice(["v", "phi", "N", str(rng.randint(-40, 40))])
     a, b = _random(rng, depth - 1), _random(rng, depth - 1)
-    form = rng.choice(["+", "-", "*", "//", "%", "cmp", "abs", "min", "max", "T", "F"])
+    form = rng.choice(["+", "-", "*", "//", "%", "cmp", "abs", "min", "max", "T", "F", *BITS])
+    if form in BITS:
+        return BITS[form].format(a=a, b=b, k=rng.randint(0, 9))
     if form == "cmp":
         return f"({a} {rng.choice(['==', '<', '>='])} {b})"
     if form in ("abs",):

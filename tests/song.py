@@ -5,7 +5,8 @@ import re
 import numpy as np
 from unitracker_grammar.document import printed, read
 
-HEAD = "unitracker:2.3\nmeta:{title:T}\n"
+VERSIONS = ("2.3", "2.4", "2.5")
+HEAD = "meta:{title:T}\n"
 TOP = ("mod", "restart", "ins", "ctrl", "pw", "filter", "phrase", "section")
 I1 = "{ad:9,sr:240,ctrl:[{ctrl:65,note:+0},end]}"
 
@@ -25,11 +26,13 @@ def doc(
     head = _sections(head, defs)
     plays = "".join(f" - {_item(r)}\n" for r in rows)
     end = " - end\n" if ending == "end" else f" - {{loop:{ending}}}\n"
-    text = f"{HEAD}{head}song:\n{plays}{end}"
-    try:
-        return printed(read(text))
-    except ValueError:
-        return text
+    for version in VERSIONS:
+        text = f"unitracker:{version}\n{HEAD}{head}song:\n{plays}{end}"
+        try:
+            return printed(read(text))
+        except ValueError:
+            pass
+    return text
 
 
 def _item(item: str) -> str:

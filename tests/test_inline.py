@@ -9,9 +9,9 @@ from song import doc
 from test_code_play import ADD, TABLE, block
 from test_sid import SONGS
 from unitracker_grammar.code import CodeError
+from unitracker_grammar.document import Code, Instrument, Program
 
 from unitracker_player import PlayError, play, read
-from unitracker_player.document import Code, Instrument, Program
 
 GATE = "ctrl:[{ctrl:65,note:+0},end]"
 NAMED = {
@@ -85,12 +85,12 @@ def test_a_lifted_fixture_inlined_plays_as_lifted(name):
 
 def test_inline_definitions_are_read_as_anonymous_named_ones():
     document = read(inlined(NAMED["programs"]))
-    event = document.timeline[0][0].phrase[0]
-    assert isinstance(event.ins, Instrument) and isinstance(event.ins.restart, Program)
-    assert dict(event.commands)["run"][0] == "pw" and document.instruments == {}
+    event = document.rows[0].play[0].phrase[0]
+    assert isinstance(event.ins, Instrument) and isinstance(event.ins.get("restart"), Program)
+    assert dict(event.commands)["run"][0] == "pw" and document.records("ins") == {}
     calls = read(inlined(NAMED["calls"]))
-    first = calls.timeline[0][0].phrase[0]
-    assert isinstance(dict(first.commands)["wob.freq"], Code) and calls.templates == {}
+    first = calls.rows[0].play[0].phrase[0]
+    assert isinstance(dict(first.commands)["wob.freq"], Code) and calls.mods == ()
 
 
 def test_an_anonymous_body_keeps_phi_for_the_same_text():

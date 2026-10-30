@@ -10,7 +10,6 @@ from unitracker_grammar.code import Call, CodeError
 
 from unitracker_player import PlayError, play, read
 from unitracker_player.compiler import _Compiler, compile_document
-from unitracker_player.document import Param
 
 PROGS = doc(
     {
@@ -41,19 +40,19 @@ def _corpus():
 
 
 def test_program_templates_are_read_with_their_parameters():
-    document = read(PROGS)
-    assert {k: v[:2] for k, v in document.forms.items()} == {
+    comp = _Compiler(read(PROGS), None)
+    assert {k: v[:2] for k, v in comp.forms.items()} == {
         "hr": ("restart", ("h", "ad", "sr")),
         "arp": ("ctrl", ("a", "b")),
         "pt": ("pw", ("b",)),
         "fl": ("filter", ("c",)),
         "pa": ("pw", ("b",)),
     }
-    rows = document.forms["arp"][2].rows
-    assert rows[0].keys[1] == ("note", ("rel", Param("a")))
-    assert rows[1].keys == (("note", ("rel", Param("b", -1))),) and rows[2].wait == Param("a")
-    assert document.programs["pw1"] == Call("pt", (40,)) and "arp" not in document.programs
-    first = document.phrases["p1"][0]
+    rows = comp.forms["arp"][2].rows
+    assert rows[0].keys[1] == ("note", "+a")
+    assert rows[1].keys[1:] == (("note", "-b"),) and dict(rows[2].keys)["wait"] == "a"
+    assert comp.programs["pw1"] == Call("pt", (40,)) and "arp" not in comp.programs
+    first = comp.phrases["p1"][0]
     assert dict(first.commands)["run"] == Call("arp", (3, 4))
 
 

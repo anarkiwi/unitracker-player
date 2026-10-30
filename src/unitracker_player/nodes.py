@@ -2,17 +2,23 @@
 
 import ast
 
-from unitracker_grammar.expr import _BINARY, _COMPARE
+from unitracker_grammar.expr import _BINARY, _BITWISE, _COMPARE, _SHIFT
+
+_BINARIES = _BINARY | _BITWISE | _SHIFT
+_UNARIES = {ast.USub: "neg", ast.Invert: "~", ast.Not: "!"}
+_LOGIC = {ast.And: "&&", ast.Or: "||"}
 
 
 def op(node) -> str:
     """The node's operator: a grammar operator, ``neg``, a call's name, ``T`` or ``leaf``."""
     if isinstance(node, ast.BinOp):
-        return _BINARY[type(node.op)]
+        return _BINARIES[type(node.op)]
     if isinstance(node, ast.Compare):
         return _COMPARE[type(node.ops[0])]
     if isinstance(node, ast.UnaryOp):
-        return "neg"
+        return _UNARIES[type(node.op)]
+    if isinstance(node, ast.BoolOp):
+        return _LOGIC[type(node.op)]
     if isinstance(node, ast.Call):
         return node.func.id
     if isinstance(node, ast.Subscript):
@@ -28,6 +34,8 @@ def children(node) -> list:
         return [node.left, node.comparators[0]]
     if isinstance(node, ast.UnaryOp):
         return [node.operand]
+    if isinstance(node, ast.BoolOp):
+        return list(node.values)
     if isinstance(node, ast.Call):
         return list(node.args)
     if isinstance(node, ast.Subscript):

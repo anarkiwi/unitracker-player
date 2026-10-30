@@ -1,23 +1,21 @@
-"""The tick machine: a canonical document played to the 25 SID registers' state per tick."""
+"""The call machine: a canonical document played to the 25 SID registers' state per frame."""
 
 import itertools
 from collections import defaultdict, deque
 
 import numpy as np
 from tqdm import tqdm
+from unitracker_grammar.cells import MASKS, SONG_CELLS, VOICE_CELLS
 
 from unitracker_player.code import Routine
 from unitracker_player.compiler import (
-    CELLS,
-    CHIP,
+    CELL_OF,
     CONTROL,
-    CUT_MASK,
     ENVELOPE,
+    EVENT_KEY,
     FILTER,
-    FREQ_MASK,
     HOLD,
     PULSE,
-    PW_MASK,
     REGISTERS,
     RESET,
     SLOT_PHASES,
@@ -43,18 +41,19 @@ __all__ = [
 
 
 class _Voice:  # pylint: disable=too-many-instance-attributes
-    """A voice's cells, note state, modulators and program slots; ``freq_mods`` and
-    ``pw_mods`` hold its cells' modulator slots, each modulator ``[fn, phi, voice, slot.cell, by
-    command, once]``."""
+    """A voice's cells, note state, modulators and program slots; ``mods`` holds its cells'
+    modulator slots, each modulator ``[fn, phi, voice, slot.cell, by command, once]``, and
+    ``lost`` the calls each program slot has not counted."""
 
-    def __init__(self, widths: dict, state: dict, slots: int):
-        self.freq = self.pw = self.ctrl = self.mask = self.gate = self.ad = self.sr = 0
+    def __init__(self, song: Song):
+        self.freq = self.pw = self.ctrl = self.ad = self.sr = self.mask = self.gate = 0
         self.note = self.absolute = None
         self.relative = 0
-        self.freq_mods, self.pw_mods = [None] * widths["freq"], [None] * widths["pw"]
+        self.mods = {cell: [None] * len(song.slots[cell]) for cell in VOICE_CELLS}
         self.freq_hold = False
-        self.slots = [[None, 0, 0] for _ in range(slots)]
-        self.state = {cell: bytearray(state.get(cell, 0)) for cell in ("freq", "pw")}
+        self.slots = [[None, 0, 0] for _ in song.kinds]
+        self.lost = [0] * len(song.kinds)
+        self.state = {cell: bytearray(song.state.get(cell, 0)) for cell in VOICE_CELLS}
 
     @property
     def sounding(self) -> int | None:
@@ -64,39 +63,37 @@ class _Voice:  # pylint: disable=too-many-instance-attributes
         return None if self.note is None else self.note + self.relative
 
 
-class Player:  # pylint: disable=too-many-instance-attributes
-    """Plays a Song one tick at a time; ``step()`` returns the registers the tick writes, those
-    computed ``lag`` ticks before, or None once the song has ended. ``regs`` is the register file
-    the last tick wrote, each register by its own statement, so a line tracer sees one store per
-    register."""
+class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
+    """Plays a Song one frame at a time; ``step()`` returns the registers after the frame's last
+    call, those computed ``lag`` calls before, or None once the song has ended. ``regs`` is the
+    register file the last call wrote, each register by its own statement, so a line tracer sees
+    one store per register."""
 
     def __init__(self, song: Song):
         self.song = song
-        self.tick = 0
+        self.call = self.tick = self._stick = 0
         self.regs = [0] * REGISTERS
-        widths = {cell: len(n) for cell, n in song.slots.items()}
-        self.voices = [_Voice(widths, song.state, len(song.kinds)) for _ in range(song.voices)]
+        self.voices = [_Voice(song) for _ in range(song.voices)]
         self._layers = {k: [s for s, own in enumerate(song.kinds) if own == k] for k in SLOTS}
-        self.cut_mods = [None] * widths["cut"]
-        self.cut_state = bytearray(song.state.get("cut", 0))
-        self.cut = self.res = self.route = self.mode = self.vol = 0
+        self.chip = dict.fromkeys(SONG_CELLS, 0)
+        self.song_mods = {cell: [None] * len(song.slots[cell]) for cell in SONG_CELLS}
+        self.song_state = {cell: bytearray(song.state.get(cell, 0)) for cell in SONG_CELLS}
+        self.owner = dict.fromkeys(SONG_CELLS)
         self._preset(song.regs)
         self._delay = deque(list(song.regs) for _ in range(song.lag))
-        self._shared = "cut" in song.shared
+        self._shared = frozenset(song.shared)
         self._seq = Sequencer(song)
         self._ins = [None] * song.voices
         self._events = defaultdict(list)
         self._lookahead = defaultdict(list)
         self._held = defaultdict(set)
-        self._cells = ()
-        self._phases = [
-            phase
-            for cells, names in itertools.groupby(song.order, CELLS.__contains__)
-            for phase in ([("fire", tuple(names))] if cells else ((n, None) for n in names))
-        ]
+        self._skipped = []
+        self._pauses = {int(m.split()[1]): m for m in song.marks if m.startswith("pause")}
+        self._phases = [(name, CELL_OF.get(name)) for name in song.order]
+        self._first = song.call_of(0)
         self._init = [i for v, e in enumerate(song.init) for _, i in self._schedule(0, v, e, 0)]
         for cell, bound in song.defaults.items():
-            for v in range(song.voices if cell != "cut" else 1):
+            for v in range(song.voices if cell in VOICE_CELLS else 1):
                 for binding in bound:
                     self._set(v, cell, *binding, False)
 
@@ -109,119 +106,149 @@ class Player:  # pylint: disable=too-many-instance-attributes
             voice.pw = regs[at + 2] | (regs[at + 3] & 15) << 8
             voice.ctrl, voice.gate = regs[at + 4], regs[at + 4] & 1
             voice.ad, voice.sr = regs[at + 5], regs[at + 6]
-        self.cut = regs[21] & 7 | regs[22] << 3
-        self.res, self.route = regs[23] >> 4, regs[23] & 15
-        self.mode, self.vol = regs[24] & 0xF0, regs[24] & 15
+        self.chip |= {
+            "cut": regs[21] & 7 | regs[22] << 3,
+            "res": regs[23] >> 4,
+            "route": regs[23] & 15,
+            "mode": regs[24] & 0xF0,
+            "vol": regs[24] & 15,
+        }
+
+    @property
+    def passes(self) -> list:
+        """The sequencer ticks at which the song passed its loop."""
+        return self._seq.passes
+
+    @property
+    def ticks_played(self) -> int:
+        """The sequencer ticks played: the full calls run."""
+        return self._stick
 
     @property
     def finished(self) -> bool:
-        """Whether the song has ended at the current tick."""
-        return self._seq.end is not None and self.tick >= self._seq.end
+        """Whether the song has ended at the current call."""
+        end = self._seq.end
+        return end is not None and self.call >= self.song.call_of(end)
 
-    def _schedule(self, t: int, v: int, event: CEvent, transpose: int) -> list:
-        """The ``(tick, event item)`` pairs of an event: a note-less one split at its
-        restart's lookahead, its gate (part ``gate``) on the first row's tick, its voice's
-        commands (part ``ops``) on the last's and its filter and volume ones (part ``chip``) on
+    def _schedule(self, s: int, v: int, event: CEvent, transpose: int) -> list:
+        """The ``(tick, event item)`` pairs of an event at sequencer tick ``s``: a note-less one
+        split at its restart's lookahead, its gate (part ``gate``) on the first row's tick, its
+        voice's commands (part ``ops``) on the last's and its song cells' ones (part ``chip``) on
         its own."""
         prev = self._ins[v]
         if event.ins is not None:
             self._ins[v] = event.ins
         ins = self._ins[v]
         if ins is None and any(k == "run" and val[1] is not None for k, val in event.ops):
-            raise PlayError(f"voice {v + 1}: !run at tick {t} on a voice with no instrument")
+            raise PlayError(f"voice {v + 1}: !run at tick {s} on a voice with no instrument")
         if not ins or not ins.restart:
-            return [(t, (v, event, transpose, ins, None, None))]
+            return [(s, (v, event, transpose, ins, None, None))]
         *ahead, (last, _) = ins.restart
         if event.legato:
-            return [(max(t - _lookahead(ins), 0), (v, event, transpose, ins, None, None))]
+            return [(max(s - _lookahead(ins), 0), (v, event, transpose, ins, None, None))]
         if ahead and prev is not None:
             ahead[0] = (ahead[0][0], prev.restart[0][1] if prev.restart else 0)
         if isinstance(event.note, int):
             if ahead:
                 ahead[-1] = (_with_envelope(ahead[-1][0], event.ops), ahead[-1][1])
             for k, (row, before) in enumerate(ahead):
-                if t - before >= 0:
-                    self._lookahead[t - before].append((v, row, not k))
-            return [(t, (v, event, transpose, ins, last, None))]
+                if s - before >= 0:
+                    self._lookahead[self.song.call_of(s - before)].append((v, row, not k))
+            return [(s, (v, event, transpose, ins, last, None))]
         if not ahead:
-            return [(t, (v, event, transpose, ins, None, None))]
+            return [(s, (v, event, transpose, ins, None, None))]
         parts = [
             (ahead[0][1], "gate", event.note),
             (ahead[-1][1], "ops", not all(map(self._chip, event.ops))),
             (0, "chip", any(map(self._chip, event.ops))),
         ]
         return [
-            (max(t - before, 0), (v, event, transpose, ins, None, part))
+            (max(s - before, 0), (v, event, transpose, ins, None, part))
             for before, part, has in parts
             if has
         ]
 
-    def _hold_step(self, t: int, v: int, event: CEvent | None, last: bool):
-        """The hold ticks of voice ``v``'s step at tick ``t``: the tick of each event it is, and
-        of its read, by the restart of the voice's instrument before the step's event."""
-        at = {"step": t, "last": t if last else None, "read": None}
+    def _hold_step(self, s: int, v: int, event: CEvent | None, last: bool):
+        """The hold calls of voice ``v``'s step at sequencer tick ``s``: the call of each event
+        it is, and of its read, by the restart of the voice's instrument before the step's
+        event."""
+        call_of, now = self.song.call_of, self.song.call_of(s)
+        at = {"step": now, "last": now if last else None, "read": None}
         ins = self._ins[v]
         if event is not None and isinstance(event.note, int):
-            at["note"] = None if event.legato else t
-            at["legato"] = max(t - _lookahead(event.ins or ins), 0) if event.legato else None
+            at["note"] = None if event.legato else now
+            if event.legato:
+                at["legato"] = call_of(max(s - _lookahead(event.ins or ins), 0))
         if ins is not None:
-            at["read"] = t - (ins.restart[0][1] if ins.restart else 0)
+            at["read"] = call_of(s - (ins.restart[0][1] if ins.restart else 0))
         for mark, events in self.song.marks.items():
             self._held[v, mark].update(at[e] - k for e, k in events if at.get(e) is not None)
 
-    def _marked(self, v: int, mark: str, t: int) -> bool:
-        """Whether tick ``t`` is one of voice ``v``'s events of ``mark``."""
+    def _marked(self, v: int, mark: str, c: int) -> bool:
+        """Whether call ``c`` is one of voice ``v``'s events of ``mark``."""
         rows = self.song.rows.get(mark, ())
-        return t in self._held[v, mark] or any(t in self._held[v, e] for e in rows)
+        return c in self._held[v, mark] or any(c in self._held[v, e] for e in rows)
 
-    def _advance(self, t: int):
-        """Schedules the steps that begin by the song's horizon past tick ``t``."""
-        for tick, v, event, transpose, last in self._seq.advance(t + self.song.horizon):
+    def _advance(self):
+        """Schedules the steps that begin by the song's horizon past the current tick."""
+        song = self.song
+        for tick, v, event, transpose, last in self._seq.advance(self._stick + song.horizon):
             self._hold_step(tick, v, event, last)
             if event is not None:
                 for at, item in self._schedule(tick, v, event, transpose):
-                    self._events[at].append(item)
+                    self._events[song.call_of(at)].append(item)
 
-    def step(self) -> list | None:
-        """Plays one tick."""
-        t = self.tick
-        self._advance(t)
+    def _call(self) -> bool:
+        """Runs one call; False where the song has ended."""
+        c, song = self.call, self.song
+        self._advance()
         if self.finished:
-            return None
-        if t == 0:
+            return False
+        full = song.full is None or song.full[c % len(song.full)]
+        rows, events = (self._lookahead.pop(c, ()), self._events.pop(c, ())) if full else ((), ())
+        if c == self._first:
             for item in self._init:
-                self._event(t, *item)
-        rows, events = self._lookahead.pop(t, ()), self._events.pop(t, ())
-        for phase, arg in self._phases:
-            if phase == "fire":
-                self._cells = arg
-                self._fire()
+                self._event(c, *item)
+        for phase, cell in self._phases:
+            if cell:
+                self._fire(cell)
             elif phase in SLOT_PHASES:
                 for slot in self._layers[SLOT_PHASES[phase]]:
                     for v in range(len(self.voices)):
-                        self._run_slot(v, slot, t)
-            else:
-                self._voice_events(t, phase == "read", rows, events)
+                        self._run_slot(v, slot, c)
+            elif full:
+                self._voice_events(c, phase == "read", rows, events)
         for ticks in self._held.values():
-            ticks.discard(t)
-        self.tick += 1
-        if not self._delay:
-            return self.registers()
-        self._delay.append(self.registers(list(self.song.regs)))
-        self.regs = self._delay.popleft()
-        return list(self.regs)
+            ticks.discard(c)
+        for v, slot in self._skipped:
+            self.voices[v].lost[slot] += 1
+        self._skipped.clear()
+        self.call += 1
+        self._stick += bool(full)
+        if self._delay:
+            self._delay.append(self.registers(list(song.regs)))
+            self.regs = self._delay.popleft()
+        return True
 
-    def _voice_events(self, t: int, reading: bool, rows, events):
-        """Per voice, its restart rows due at ``t`` and its events: the read rows alone where
+    def step(self) -> list | None:
+        """Plays one frame."""
+        for _ in range(self.song.frame):
+            if not self._call():
+                return None
+        self.tick += 1
+        return list(self.regs) if self._delay else self.registers()
+
+    def _voice_events(self, c: int, reading: bool, rows, events):
+        """Per voice, its restart rows due at ``c`` and its events: the read rows alone where
         ``reading``, else the events with every row but those the ``read`` phase runs."""
         apart = "read" in self.song.order
         for v in range(len(self.voices)):
             for rv, row, first in rows:
                 if rv == v and reading == (apart and first):
-                    self._row(v, row, t)
+                    self._apply(v, row[2], c, True)
             for item in () if reading else events:
                 if item[0] == v:
-                    self._event(t, *item)
+                    self._event(c, *item)
 
     def registers(self, regs: list | None = None) -> list:
         """The 25 register values the cells make, written to ``regs`` (by default ``regs``)."""
@@ -235,30 +262,33 @@ class Player:  # pylint: disable=too-many-instance-attributes
             regs[at + 4] = ((voice.ctrl ^ voice.mask) & 0xFE) | (voice.ctrl & voice.gate & 1)
             regs[at + 5] = voice.ad
             regs[at + 6] = voice.sr
-        regs[21] = self.cut & 7
-        regs[22] = self.cut >> 3
-        regs[23] = self.res << 4 | self.route
-        regs[24] = self.mode | self.vol
+        chip = self.chip
+        regs[21] = chip["cut"] & 7
+        regs[22] = chip["cut"] >> 3
+        regs[23] = chip["res"] << 4 | chip["route"]
+        regs[24] = chip["mode"] | chip["vol"]
         return list(regs)
 
-    def _start(self, v: int, slot: int, prog: CProgram | None, t: int):
-        """Starts ``prog`` in program slot ``slot``, or with None stops it; a filter program
-        stops the same layer of every other voice."""
+    def _start(self, v: int, slot: int, prog: CProgram | None, c: int):
+        """Starts ``prog`` in program slot ``slot`` at the slot's clock, or with None stops it; a
+        filter program stops the same layer of every other voice."""
         running = prog is not None and bool(prog.rows)
         if running and self.song.kinds[slot] == FILTER:
             for other in range(len(self.voices)):
                 if other != v:
                     self._stop_filter(other, (slot,))
-        self.voices[v].slots[slot] = [prog, 0, t + prog.rows[0][0]] if running else [None, 0, 0]
+        voice = self.voices[v]
+        voice.slots[slot] = (
+            [prog, 0, c - voice.lost[slot] + prog.rows[0][0]] if running else [None, 0, 0]
+        )
 
     def _chip(self, op: tuple) -> bool:
-        """Whether a command sets the filter or the volume: of :data:`CHIP`, or a filter
-        program's ``!run``."""
+        """Whether a command sets a song cell, or is a filter program's ``!run``."""
         key, value = op
-        return key in CHIP or key == "run" and self.song.kinds[value[0]] == FILTER
+        return key in SONG_CELLS or key == "run" and self.song.kinds[value[0]] == FILTER
 
     def _mods(self, v: int, cell: str) -> list:
-        return self.cut_mods if cell == "cut" else getattr(self.voices[v], cell + "_mods")
+        return self.song_mods[cell] if cell in SONG_CELLS else self.voices[v].mods[cell]
 
     # pylint: disable-next=too-many-arguments,too-many-positional-arguments
     def _end(self, v: int, cell: str, ends, command: bool | None = None, anyone=False):
@@ -281,25 +311,27 @@ class Player:  # pylint: disable=too-many-instance-attributes
             mod[2], mod[4] = v, command
         else:
             mods[slot] = [fn, 0, v, f"{self.song.slots[cell][slot]}.{cell}", command, once]
-        if cell == "freq":
+        if cell in SONG_CELLS:
+            self.owner[cell] = v
+        elif cell == "freq":
             self.voices[v].freq_hold = False
 
     def _stop_filter(self, v: int, slots):
         for slot in slots:
             self.voices[v].slots[slot][0] = None
-        self._end(v, "cut", range(len(self.cut_mods)), False)
+        self._end(v, "cut", range(len(self.song_mods["cut"])), False)
 
     def _stop(self, v: int, cell: str, value, ends: tuple):
         """Cell ``cell``'s ``reset``: phi of the modulators in slots ``ends`` back at 0; ``none`` or
-        ``hold``: ends them (the cutoff's only where voice ``v`` set them); ``hold`` also stops
-        the cell's program slot and holds the frequency."""
+        ``hold``: ends them (a song cell's only where voice ``v`` set them, unless the song
+        owns it); ``hold`` also stops the cell's program slot and holds the frequency."""
         voice = self.voices[v]
         if value == RESET:
             for mod in (self._mods(v, cell)[k] for k in ends):
                 if mod is not None:
                     mod[1] = 0
             return
-        shared = cell == "cut" and self._shared
+        shared = cell in self._shared
         self._end(v, cell, ends, None, shared)
         if value == HOLD:
             if cell == "pw":
@@ -311,23 +343,24 @@ class Player:  # pylint: disable=too-many-instance-attributes
         if cell == "freq":
             voice.freq_hold = value == HOLD
 
-    def _run_slot(self, v: int, kind: int, t: int):
-        """Runs the rows of voice ``v``'s program slot ``kind`` due by tick ``t``."""
-        slots, seen, control = self.voices[v].slots, set(), self.song.kinds[kind] == CONTROL
-        while (slot := slots[kind])[0] is not None and slot[2] <= t:
+    def _run_slot(self, v: int, kind: int, c: int):
+        """Runs the rows of voice ``v``'s program slot ``kind`` due by its clock at call ``c``,
+        none where the slot is paused on one of the voice's events."""
+        voice = self.voices[v]
+        if (mark := self._pauses.get(kind)) and self._marked(v, mark, c):
+            self._skipped.append((v, kind))
+            return
+        slots, seen, control = voice.slots, set(), self.song.kinds[kind] == CONTROL
+        clock = c - voice.lost[kind]
+        while (slot := slots[kind])[0] is not None and slot[2] <= clock:
             prog, index = slot[0], slot[1]
             if (id(prog), index) in seen:
-                raise PlayError(f"voice {v + 1}: a program loops in no time at tick {t}")
+                raise PlayError(f"voice {v + 1}: a program loops in no time at call {c}")
             seen.add((id(prog), index))
             _, hold, ops = prog.rows[index]
-            self._apply(v, ops, t, False, prog.fresh)
+            self._apply(v, ops, c, False, prog.fresh)
             if control:
-                keys = {key for key, _ in ops}
-                events = {"row." + key for key in keys}
-                if keys - {"ctrl", "gate"}:
-                    events.add("row")
-                for event in events:
-                    self._held[v, event].add(t)
+                self._note_row(v, ops, c)
             if slots[kind] is not slot or slot[0] is None:
                 continue
             index += 1
@@ -336,25 +369,27 @@ class Player:  # pylint: disable=too-many-instance-attributes
                     slot[0] = None
                     break
                 index = prog.loop
-            slot[1], slot[2] = index, t + hold + prog.rows[index][0]
+            slot[1], slot[2] = index, clock + hold + prog.rows[index][0]
 
-    def _row(self, v: int, row: tuple, t: int, first: bool = False):
-        self._apply(v, row[2], t, first)
+    def _note_row(self, v: int, ops: tuple, c: int):
+        """Records the ``row`` and ``row.KEY`` events of a control program row applied at ``c``."""
+        keys = {EVENT_KEY.get(key, key) for key, _ in ops}
+        events = {"row." + key for key in keys}
+        if keys - {"ctrl", "gate"}:
+            events.add("row")
+        for event in events:
+            self._held[v, event].add(c)
 
     # pylint: disable-next=too-many-branches,too-many-arguments,too-many-positional-arguments
-    def _apply(self, v: int, ops: tuple, t: int, first: bool, fresh=False):
-        """A row's keys, in vocabulary order; ``first`` marks a restart's first-tick row,
-        ``fresh`` an instrument field's program, whose bindings restart phi."""
+    def _apply(self, v: int, ops: tuple, c: int, first: bool, fresh=False, command=False):
+        """Keys ``ops`` of a row or the commands of an event, in vocabulary order; ``first``
+        marks a restart's first-tick row, ``fresh`` an instrument field's program, whose
+        bindings restart phi."""
         voice = self.voices[v]
         for key, value in ops:
-            if key == "ctrl":
-                ctrl, mask = value
-                if ctrl is not None:
-                    voice.ctrl = ctrl & 0xFF
-                if mask is not None:
-                    voice.mask = mask & 0xFE
-                if first:
-                    voice.gate = 1
+            if key == "mask":
+                voice.mask = value & 0xFE
+                voice.gate |= first
             elif key == "gate":
                 voice.gate = 1 if value else 0
             elif key == "note":
@@ -362,117 +397,89 @@ class Player:  # pylint: disable=too-many-instance-attributes
                     voice.relative, voice.absolute = value[1], None
                 else:
                     voice.absolute = value[1]
-            elif key in ("ad", "sr"):
-                setattr(voice, key, value & 0xFF)
-            elif key in CELLS:
-                if isinstance(value[0], int):
-                    self._set(v, key, *value, False, fresh)
-                else:
-                    self._stop(v, key, *value)
+            elif key in ("route_on", "route_off"):
+                bits = (1 << v | value) & 15
+                route = self.chip["route"]
+                self.chip["route"] = route | bits if key == "route_on" else route & ~bits
             elif key == "run":
-                self._start(v, value[0], value[1], t)
+                self._start(v, value[0], value[1], c)
+            elif isinstance(value, int):
+                if key == "ctrl":
+                    voice.gate |= first
+                if key in SONG_CELLS:
+                    self.chip[key] = value
+                else:
+                    setattr(voice, key, value)
+            elif isinstance(value[0], int):
+                self._set(v, key, *value, command, fresh)
             else:
-                self._global(v, key, value)
-
-    def _global(self, v: int, key: str, value):
-        if key == "res":
-            self.res = value & 15
-        elif key == "route":
-            form, mask = value
-            bits = (1 << v | mask) & 15 if form != "mask" else mask & 15
-            self.route = (
-                bits
-                if form == "mask"
-                else self.route | bits if form == "add" else self.route & ~bits
-            )
-        elif key == "mode":
-            self.mode = value & 0xF0
-        elif key == "vol":
-            self.vol = value & 15
+                self._stop(v, key, *value)
 
     def _event(
-        self, t: int, v: int, event: CEvent, transpose: int, ins, last, part
+        self, c: int, v: int, event: CEvent, transpose: int, ins, last, part
     ):  # pylint: disable=too-many-arguments,too-many-positional-arguments
         """Event ``event``, or its ``part``: ``gate`` its gate alone, ``ops`` its voice's
-        commands, ``chip`` its filter and volume ones."""
+        commands, ``chip`` its song cells' ones."""
         voice = self.voices[v]
         if last is not None:
-            self._row(v, last, t, True)
+            self._apply(v, last[2], c, True)
         if isinstance(event.note, int):
             voice.note = event.note + transpose
             if not event.legato:
                 voice.relative, voice.absolute, voice.gate = 0, None, 1
                 if ins is not None:
-                    self._instrument(v, ins, event, t)
+                    self._instrument(v, ins, event, c)
         elif event.note is not None and part not in ("ops", "chip"):
             voice.gate = 1 if event.note == "on" else 0
-        for key, value in event.ops if part != "gate" else ():
-            if part is None or (part == "chip") == self._chip((key, value)):
-                self._command(v, key, value, t)
+        for op in event.ops if part != "gate" else ():
+            if part is None or (part == "chip") == self._chip(op):
+                self._apply(v, (op,), c, False, command=True)
 
-    def _instrument(self, v: int, ins: CInstrument, event: CEvent, t: int):
+    def _instrument(self, v: int, ins: CInstrument, event: CEvent, c: int):
         voice = self.voices[v]
         if ins.ad is not None:
-            voice.ad = ins.ad & 0xFF
+            voice.ad = ins.ad
         if ins.sr is not None:
-            voice.sr = ins.sr & 0xFF
+            voice.sr = ins.sr
         if ins.ctrl is not None:
-            self._start(v, CONTROL, ins.ctrl, t)
+            self._start(v, CONTROL, ins.ctrl, c)
         if ins.pw is not None and not event.keep_pw:
-            self._start(v, PULSE, ins.pw, t)
+            self._start(v, PULSE, ins.pw, c)
         if ins.filter is not None and not event.keep_filter:
-            self._start(v, FILTER, ins.filter, t)
+            self._start(v, FILTER, ins.filter, c)
         keep = {PULSE: event.keep_pw, FILTER: event.keep_filter}
         for slot, prog in ins.layers:
             if not keep.get(self.song.kinds[slot]):
-                self._start(v, slot, prog, t)
-        for value in ins.freq or ():
-            if isinstance(value[0], int):
-                self._set(v, "freq", *value, False, fresh=True)
+                self._start(v, slot, prog, c)
+        for cell, op in ins.binds:
+            if isinstance(op[0], int):
+                self._set(v, cell, *op, False, fresh=True)
             else:
-                self._stop(v, "freq", *value)
+                self._stop(v, cell, *op)
         voice.freq_hold = False
 
-    def _command(self, v: int, key: str, value, t: int):
-        voice = self.voices[v]
-        if key == "run":
-            self._start(v, value[0], value[1], t)
-        elif key in CELLS:
-            if isinstance(value[0], int):
-                self._set(v, key, *value, True)
-            else:
-                self._stop(v, key, *value)
-        elif key in ("ad", "sr"):
-            setattr(voice, key, value & 0xFF)
-        elif key == "ctrl":
-            voice.ctrl = value & 0xFF
-        elif key == "resfilt":
-            self.res, self.route = value[0] & 15, value[1] & 15
-        else:
-            self._global(v, key, value)
-
-    # pylint: disable-next=too-many-arguments,too-many-positional-arguments
-    def _chain(self, t: int, mods: list, value: int, mask: int, cell: str) -> int | None:
+    def _chain(self, mods: list, value: int, cell: str) -> int | None:
         """The cell's value ``value`` after its modulators ``mods`` fire, or None where it has
-        none. Each slot in order fires on the value the slot before it left, unless it holds on
-        the events of the voice that set it, its phi first back at 0 on its reset events. A code
-        modulator runs on the state of ``cell`` of the voice that set it (the one ``cut``
-        state)."""
+        none. A slot fires on the value the slot before left unless it holds on its voice's events,
+        its phi first back at 0 on its reset events, and a once binding is then unbound."""
         if not any(mods):
             return None
-        for mod in mods:
+        c, mask = self.call, MASKS[cell]
+        for k, mod in enumerate(mods):
             if mod is None:
                 continue
-            if self._marked(mod[2], "reset " + mod[3], t):
+            if self._marked(mod[2], "reset " + mod[3], c):
                 mod[1] = 0
-            if not self._marked(mod[2], "hold " + mod[3], t):
+            if not self._marked(mod[2], "hold " + mod[3], c):
                 fn, notes = mod[0], self._notes(mod[2])
                 if type(fn) is Routine:  # pylint: disable=unidiomatic-typecheck
-                    state = self.cut_state if cell == "cut" else self.voices[mod[2]].state[cell]
-                    value = fn(value, mod[1], *notes, state) & mask
+                    state = self.song_state if cell in SONG_CELLS else self.voices[mod[2]].state
+                    value = fn(value, mod[1], *notes, state[cell]) & mask
                 else:
                     value = fn(value, mod[1], *notes) & mask
                 mod[1] += 1
+                if mod[5]:
+                    mods[k] = None
         return value
 
     def _notes(self, v: int) -> tuple:
@@ -480,39 +487,30 @@ class Player:  # pylint: disable=too-many-instance-attributes
         voice = self.voices[v]
         return voice.sounding or 0, voice.note or 0
 
-    def _fire(self):
-        """Fires the cells of the modulator phases this pass runs, ``_cells``, in their order."""
-        t = self.tick
-        for cell in self._cells:
-            if cell == "cut":
-                out = self._chain(t, self.cut_mods, self.cut, CUT_MASK, "cut")
-                self.cut = self.cut if out is None else out
-                _spend(self.cut_mods)
-            elif cell == "pw":
-                for voice in self.voices:
-                    out = self._chain(t, voice.pw_mods, voice.pw, PW_MASK, "pw")
-                    voice.pw = voice.pw if out is None else out
-                    _spend(voice.pw_mods)
-            else:
-                for vix, voice in enumerate(self.voices):
-                    self._fire_freq(t, vix)
-                    _spend(voice.freq_mods)
+    def _fire(self, cell: str):
+        """Fires ``cell`` in its phase: a voice's cell for each voice in order, a song cell once,
+        a shared one only where it has an owner."""
+        if cell in SONG_CELLS:
+            if cell in self._shared and self.owner[cell] is None:
+                return
+            out = self._chain(self.song_mods[cell], self.chip[cell], cell)
+            if out is not None:
+                self.chip[cell] = out
+            return
+        for v, voice in enumerate(self.voices):
+            if cell == "freq":
+                self._fire_freq(v)
+            elif (out := self._chain(voice.mods[cell], getattr(voice, cell), cell)) is not None:
+                setattr(voice, cell, out)
 
-    def _fire_freq(self, t: int, vix: int):
-        voice = self.voices[vix]
+    def _fire_freq(self, v: int):
+        voice = self.voices[v]
         n = voice.sounding
-        out = self._chain(t, voice.freq_mods, voice.freq, FREQ_MASK, "freq")
+        out = self._chain(voice.mods["freq"], voice.freq, "freq")
         if out is not None:
             voice.freq = out
         elif n is not None and not voice.freq_hold:
             voice.freq = self.song.table(n)
-
-
-def _spend(mods: list):
-    """Unbinds each once binding of ``mods`` that has fired."""
-    for k, mod in enumerate(mods):
-        if mod is not None and mod[5] and mod[1]:
-            mods[k] = None
 
 
 def _lookahead(ins: CInstrument | None) -> int:
@@ -521,14 +519,14 @@ def _lookahead(ins: CInstrument | None) -> int:
 
 
 def _with_envelope(row: tuple, ops: tuple) -> tuple:
-    """Restart row ``row`` with a note's !ad and !sr ``ops`` after its own keys."""
+    """Restart row ``row`` with a note's plain ``ad``, ``sr`` and ``ctrl`` ``ops`` after its own
+    keys."""
     wait, hold, keys = row
-    first = ((k, (v, None) if k == "ctrl" else v) for k, v in ops if k in ENVELOPE)
-    return wait, hold, keys + tuple(first)
+    return wait, hold, keys + tuple((k, v) for k, v in ops if k in ENVELOPE and isinstance(v, int))
 
 
 def play(source, ticks: int | None = None, progress: bool = False) -> np.ndarray:
-    """The registers at the end of each tick of a document's text or Song, shape ``(ticks,
+    """The registers at the end of each frame of a document's text or Song, shape ``(frames,
     25)``: to the song's end when ``ticks`` is None (a looping song needs ``ticks``), and fewer
     rows where the song ends first."""
     song = load(source) if isinstance(source, str) else source
