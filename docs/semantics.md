@@ -546,6 +546,20 @@ does not run on a reduced call. A program or binding a phase starts after its ow
 phase has run this tick applies from the next tick, and a `row` or `row.KEY` event is a control
 program row the `ctrl` phase applied before that tick's modulator phase.
 
+## Observing
+
+`Player(song, observe)` calls `observe(kind, *args)` as the machine steps, for tools that need what
+each slot did and not only the registers; `Player.tick` is the frame being played. The kinds are
+those of `unitracker_player.player.OBSERVED`:
+
+| kind | arguments |
+|---|---|
+| `event` | `(voice, event)`: an event begins to apply |
+| `bind` | `(voice, cell, slot, command)`: a binding is about to be set, by a command or a row; the cell's slots are still as they were |
+| `stop` | `(voice, cell, value, ends)`: a `none`, `hold` or `reset` of the slots `ends` is about to apply |
+| `fire` | `(cell, owner, slot, by, fn, phi, value, out, N, n)`: a slot fired; `owner` is the voice of the cell (0 for a song cell), `by` the voice that bound the slot |
+| `cell` | `(cell, voice)`: a voice's cell has settled in its phase |
+
 ## Registers
 
 Each frame writes the registers the cells made `lag` calls before its last call (0 without a

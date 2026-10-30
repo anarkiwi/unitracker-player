@@ -30,7 +30,16 @@ from unitracker_player.compiler import (
 )
 from unitracker_player.sequencer import PlayError, Sequencer
 
+OBSERVED = {
+    "event": "(voice, event): an event begins to apply",
+    "bind": "(voice, cell, slot, command): a binding is about to be set, by a command or a row",
+    "stop": "(voice, cell, value, ends): a ``none``, ``hold`` or ``reset`` is about to apply",
+    "fire": "(cell, owner, slot, by, fn, phi, value, out, N, n): a slot fired; ``owner`` is the "
+    "voice of the cell (0 for a song cell), ``by`` the voice that bound the slot",
+    "cell": "(cell, voice): a voice's cell has settled in its phase",
+}
 __all__ = [
+    "OBSERVED",
     "REGISTERS",
     "Player",
     "PlayError",
@@ -68,10 +77,11 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
     """Plays a Song one frame at a time; ``step()`` returns the registers after the frame's last
     call, those computed ``lag`` calls before, or None once the song has ended. ``regs`` is the
     register file the last call wrote, each register by its own statement, so a line tracer sees
-    one store per register."""
+    one store per register. ``observe(kind, *args)``, where given, is told of the machine's
+    steps, as the :data:`OBSERVED` list says."""
 
-    def __init__(self, song: Song):
-        self.song = song
+    def __init__(self, song: Song, observe=None):
+        self.song, self.observe = song, observe
         self.call = self.tick = self._stick = 0
         self.regs = [0] * REGISTERS
         self.voices = [_Voice(song) for _ in range(song.voices)]
@@ -307,6 +317,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         where it is bound to ``fn`` already and the binding is no ``fresh`` one of a note's
         instrument nor a ``once`` one."""
         mods = self._mods(v, cell)
+        if self.observe:
+            self.observe("bind", v, cell, slot, command)
         mod = mods[slot]
         if not (fresh or once) and mod is not None and mod[0] is fn and not mod[5]:
             mod[2], mod[4] = v, command
@@ -327,6 +339,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         ``hold``: ends them (a song cell's only where voice ``v`` set them, unless the song
         owns it); ``hold`` also stops the cell's program slot and holds the frequency."""
         voice = self.voices[v]
+        if self.observe:
+            self.observe("stop", v, cell, value, ends)
         if value == RESET:
             for mod in (self._mods(v, cell)[k] for k in ends):
                 if mod is not None:
@@ -416,6 +430,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         """Event ``event``, or its ``part``: ``gate`` its gate alone, ``ops`` its voice's
         commands, ``chip`` its song cells' ones."""
         voice = self.voices[v]
+        if self.observe:
+            self.observe("event", v, event)
         if last is not None:
             self._apply(v, last[2], c, True)
         if isinstance(event.note, int):
@@ -449,7 +465,7 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
                 self._stop(v, cell, *op)
         voice.freq_hold = False
 
-    def _chain(self, mods: list, value: int, cell: str) -> int | None:
+    def _chain(self, mods: list, value: int, cell: str, owner: int = 0) -> int | None:
         """The cell's value ``value`` after its modulators ``mods`` fire, or None where it has
         none. A slot fires on the value the slot before left unless it holds on its voice's events,
         its phi first back at 0 on its reset events, and a once binding is then unbound."""
@@ -465,9 +481,12 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
                 fn, notes = mod[0], self._notes(mod[2])
                 if type(fn) is Routine:  # pylint: disable=unidiomatic-typecheck
                     state = self.song_state if cell in SONG_CELLS else self.voices[mod[2]].state
-                    value = fn(value, mod[1], *notes, state[cell]) & mask
+                    out = fn(value, mod[1], *notes, state[cell]) & mask
                 else:
-                    value = fn(value, mod[1], *notes) & mask
+                    out = fn(value, mod[1], *notes) & mask
+                if self.observe:
+                    self.observe("fire", cell, owner, k, mod[2], fn, mod[1], value, out, *notes)
+                value = out
                 mod[1] += 1
                 if mod[5]:
                     mods[k] = None
@@ -491,13 +510,15 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         for v, voice in enumerate(self.voices):
             if cell == "freq":
                 self._fire_freq(v)
-            elif (out := self._chain(voice.mods[cell], getattr(voice, cell), cell)) is not None:
+            elif (out := self._chain(voice.mods[cell], getattr(voice, cell), cell, v)) is not None:
                 setattr(voice, cell, out)
+            if self.observe:
+                self.observe("cell", cell, v)
 
     def _fire_freq(self, v: int):
         voice = self.voices[v]
         n = voice.sounding
-        out = self._chain(voice.mods["freq"], voice.freq, "freq")
+        out = self._chain(voice.mods["freq"], voice.freq, "freq", v)
         if out is not None:
             voice.freq = out
         elif n is not None and not voice.freq_hold:
