@@ -25,7 +25,10 @@ def of(log: list, kind: str, cell: str | None = None) -> list:
 
 def test_every_kind_is_documented_and_reported():
     log = observed(doc(phrase="[C4.i1 pw:'10*phi + 1',- pw:none,-]", ins=CTRL, head="tempo:1\n"), 3)
-    assert {k for k, _, _ in log} == set(OBSERVED)
+    assert {k for k, _, _ in log} <= set(OBSERVED)
+    assert {"event", "bind", "stop", "fire", "cell", "enter", "leave", "row", "start"} == {
+        k for k, _, _ in log
+    }
 
 
 def test_fire_reports_each_firing_with_its_phi_and_values():
@@ -43,3 +46,35 @@ def test_bind_and_stop_are_reported_before_they_apply():
     assert of(log, "bind", "pw") == [(0, (0, "pw", 0, True))]
     assert of(log, "stop", "pw") == [(1, (0, "pw", "none", (0,)))]
     assert [t for t, _ in of(log, "fire", "pw")] == [0]
+
+
+CHAINED = "{ctrl:c1,freq:vib(2)}"
+
+
+def scoped(log: list) -> list:
+    """The kinds between each ``enter`` and its ``leave``, as ``(scope, kinds)``."""
+    out, stack = [], []
+    for kind, _, args in log:
+        if kind == "enter":
+            stack.append((args[0], []))
+        elif kind == "leave":
+            out.append(stack.pop())
+        elif stack:
+            stack[-1][1].append(kind)
+    return out
+
+
+def test_starts_rows_rewinds_and_scopes_are_reported():
+    text = doc(
+        phrase="[C4.i1,-*7,D.i1,-*7]",
+        ins=CHAINED,
+        head="voices:1\ntempo:1\nslots:{freq:{freq:{reset:[note]}}}\n",
+        mods={"vib(d)": "v + d*(phi % 4)"},
+        ctrl={"c1": "[{ctrl:65},{wait:2,freq:vib(2)},end]"},
+    )
+    log = observed(text, 16)
+    assert [(t, a[1]) for t, a in of(log, "start")] == [(0, 0), (8, 0)]
+    assert [t for t, _ in of(log, "row")][:3] == [0, 3, 8]
+    assert [(t, a) for t, a in of(log, "rewind")] == [(0, (0, "freq.freq")), (8, (0, "freq.freq"))]
+    assert ("instrument", ["start", "bind"]) in scoped(log)
+    assert ("apply", ["bind"]) in scoped(log)

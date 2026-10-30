@@ -554,7 +554,11 @@ those of `unitracker_player.player.OBSERVED`:
 
 | kind | arguments |
 |---|---|
-| `event` | `(voice, event)`: an event begins to apply |
+| `event` | `(voice, event, instrument)`: an event begins to apply |
+| `enter`, `leave` | `(scope, voice, *args)` and `(scope)`: `apply` with `(first, command)` around the keys of a row or an event's command, `instrument` with `(instrument)` around a note's instrument; the `bind`, `stop` and `start` reports between are theirs |
+| `row` | `(voice, slot)`: a program slot's row is about to apply |
+| `start` | `(voice, slot, program)`: a program is about to start in a program slot, `None` to stop it |
+| `rewind` | `(voice, name)`: a slot's phi is back at 0 on its reset event, `name` its `slot.cell` |
 | `bind` | `(voice, cell, slot, command)`: a binding is about to be set, by a command or a row; the cell's slots are still as they were |
 | `stop` | `(voice, cell, value, ends)`: a `none`, `hold` or `reset` of the slots `ends` is about to apply |
 | `fire` | `(cell, owner, slot, by, fn, phi, value, out, N, n)`: a slot fired; `owner` is the voice of the cell (0 for a song cell), `by` the voice that bound the slot |

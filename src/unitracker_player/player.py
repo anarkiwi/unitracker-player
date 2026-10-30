@@ -31,7 +31,15 @@ from unitracker_player.compiler import (
 from unitracker_player.sequencer import PlayError, Sequencer
 
 OBSERVED = {
-    "event": "(voice, event): an event begins to apply",
+    "event": "(voice, event, instrument): an event begins to apply",
+    "enter": "(scope, voice, *args): ``apply`` with ``(first, command)`` for the keys of a row or "
+    "an event's command, ``instrument`` with ``(instrument)`` for a note's instrument; the binds, "
+    "stops and starts until its ``leave`` are theirs",
+    "leave": "(scope): the scope entered ends",
+    "row": "(voice, slot): a program slot's row is about to apply",
+    "start": "(voice, slot, program): a program is about to start in a program slot, None to stop",
+    "rewind": "(voice, name): a slot's phi is back at 0 on its reset event, ``name`` its "
+    "``slot.cell``",
     "bind": "(voice, cell, slot, command): a binding is about to be set, by a command or a row",
     "stop": "(voice, cell, value, ends): a ``none``, ``hold`` or ``reset`` is about to apply",
     "fire": "(cell, owner, slot, by, fn, phi, value, out, N, n): a slot fired; ``owner`` is the "
@@ -284,6 +292,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         """Starts ``prog`` in program slot ``slot`` at the slot's clock, or with None stops it; a
         filter program stops the same layer of every other voice."""
         running = prog is not None and bool(prog.rows)
+        if self.observe:
+            self.observe("start", v, slot, prog)
         if running and self.song.kinds[slot] == FILTER:
             for other in range(len(self.voices)):
                 if other != v:
@@ -373,6 +383,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
                 raise PlayError(f"voice {v + 1}: a program loops in no time at call {c}")
             seen.add((id(prog), index))
             _, hold, ops = prog.rows[index]
+            if self.observe:
+                self.observe("row", v, kind)
             self._apply(v, ops, c, False, prog.fresh)
             if control:
                 self._note_row(v, ops, c)
@@ -401,6 +413,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         marks a restart's first-tick row, ``fresh`` an instrument field's program, whose
         bindings restart phi."""
         voice = self.voices[v]
+        if self.observe:
+            self.observe("enter", "apply", v, first, command)
         for key, value in ops:
             if key == "mask":
                 voice.mask = value & 0xFE
@@ -423,6 +437,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
                 self._set(v, key, *value, command, fresh)
             else:
                 self._stop(v, key, *value)
+        if self.observe:
+            self.observe("leave", "apply")
 
     def _event(
         self, c: int, v: int, event: CEvent, transpose: int, ins, last, part
@@ -431,7 +447,7 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         commands, ``chip`` its song cells' ones."""
         voice = self.voices[v]
         if self.observe:
-            self.observe("event", v, event)
+            self.observe("event", v, event, ins)
         if last is not None:
             self._apply(v, last[2], c, True)
         if isinstance(event.note, int):
@@ -448,6 +464,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
 
     def _instrument(self, v: int, ins: CInstrument, event: CEvent, c: int):
         voice = self.voices[v]
+        if self.observe:
+            self.observe("enter", "instrument", v, ins)
         if ins.ctrl is not None:
             self._start(v, CONTROL, ins.ctrl, c)
         if ins.pw is not None and not event.keep_pw:
@@ -464,6 +482,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
             else:
                 self._stop(v, cell, *op)
         voice.freq_hold = False
+        if self.observe:
+            self.observe("leave", "instrument")
 
     def _chain(self, mods: list, value: int, cell: str, owner: int = 0) -> int | None:
         """The cell's value ``value`` after its modulators ``mods`` fire, or None where it has
@@ -477,6 +497,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
                 continue
             if self._marked(mod[2], "reset " + mod[3], c):
                 mod[1] = 0
+                if self.observe:
+                    self.observe("rewind", mod[2], mod[3])
             if not self._marked(mod[2], "hold " + mod[3], c):
                 fn, notes = mod[0], self._notes(mod[2])
                 if type(fn) is Routine:  # pylint: disable=unidiomatic-typecheck
