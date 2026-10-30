@@ -75,6 +75,6 @@ def test_starts_rows_rewinds_and_scopes_are_reported():
     log = observed(text, 16)
     assert [(t, a[1]) for t, a in of(log, "start")] == [(0, 0), (8, 0)]
     assert [t for t, _ in of(log, "row")][:3] == [0, 3, 8]
-    assert [(t, a) for t, a in of(log, "rewind")] == [(0, (0, "freq.freq")), (8, (0, "freq.freq"))]
+    assert of(log, "rewind") == [(0, (0, "freq.freq")), (8, (0, "freq.freq"))]
     assert ("instrument", ["start", "bind"]) in scoped(log)
     assert ("apply", ["bind"]) in scoped(log)
