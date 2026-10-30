@@ -237,7 +237,8 @@ the voice's last instrument. `-.iN`, `off.iN` and `on.iN` only set it.
 A note without `legato` sets the event note, clears the rows' relative and absolute note, sets
 the gate on and starts the voice's instrument, if it has one:
 
-- a plain `ad` and `sr` take the instrument's (a binding of either binds its slot, `none` ends it);
+- a plain `ad` and `sr` are written, as a plain integer is (see [Cells](#cells)); a binding of either
+  binds its slot, `none` ends it;
 - each control program the instrument names starts in its layer (see [Layers](#layers));
 - each pulse program starts unless the event carries the `pw` flag, each filter program unless it
   carries `filter`;
@@ -295,21 +296,21 @@ refused.
 
 A row's keys apply in grammar order, a cell's keys, which may repeat, in the order written
 (`{pw:hold,pw:2000}` stops the pulse program and then binds); a key it leaves out changes
-nothing.
+nothing. Each row rebinds the slots it names, so a row's integer is that slot's once write and the
+cell holds the value until a slot or a later row changes it.
 
 | key | meaning |
 |---|---|
-| `ctrl:c` | the control byte becomes `c` (see [Registers](#registers)) |
+| `ctrl:c` | writes the control byte `c` (see [Registers](#registers)) |
 | `mask:m` | the mask becomes `m & $FE`; only a row with a mask changes the mask. `ctrl` and `mask` are a row's control keys: either sets the gate on in a restart's last row and makes the row a `row.ctrl` one |
 | `gate` | 0 off, any other value on |
 | `note:+n`, `note:-n` | the relative note becomes `n`, clearing the absolute note |
 | `note:g5` | the absolute note becomes that note |
-| `ctrl ad sr res route mode vol` as a plain integer | the cell takes the integer wrapped to its mask (see [Cells](#cells)) |
 | `CELL:b`, `slot.CELL:b` for each of the ten cells | binds the cell's slot to `b` (see [Bindings](#bindings)); a song cell's slot reads this voice's notes |
 | `CELL:none`, `CELL:hold`, `CELL:reset` | see [Stops](#stops) |
 | `route_on:m` | adds this voice's bit (`1 << (voice - 1)`) and `m` to the `route` cell |
 | `route_off:m` | removes them; `route`, `route_on` and `route_off` are a row's routing keys, `row.route` naming each |
-| `freq:n`, `pw:n`, `cut:n` | an integer binds a constant: `freq:n` is `F(N) + n` |
+| `CELL:n` for each of the ten cells | a plain integer, a write (see [Cells](#cells)); on `freq`, `freq:n` and `freq:+n` write `F(N) + n` |
 | `run:c3`, `run:pw2`, `run:f1` | starts that program at this tick in the control, pulse or filter slot, its kind's first layer's |
 | `b.run:c3` | ... in its kind's layer `b`; `run` repeats, each starting its program in the order written |
 | `run:arp(7,4)` | starts the call's program (see [Definitions](#definitions)) in its kind's slot |
@@ -357,10 +358,18 @@ A pause changes nothing else: modulators fire, other kinds run and events apply.
 Ten cells take bindings, stops and slots; `unitracker_grammar.cells` holds the table of their
 scope, mask, phase and registers, and [format-2.5.md](https://github.com/anarkiwi/unitracker-grammar/blob/main/docs/format-2.5.md#cells)
 describes them. `freq`, `pw`, `ctrl`, `ad` and `sr` are a voice's, `cut`, `res`, `route`, `mode`
-and `vol` the song's. An integer of `ctrl ad sr res route mode vol` sets the cell now, wrapped to
-its mask, and ends and binds nothing: the slots the cell has keep their bindings and fire on the
-new value; an integer of `freq`, `pw` and `cut` is a binding. A restart's last lookahead row also
-applies the event's plain `ad`, `sr` and `ctrl`. A song cell's slot is bound by a voice and reads
+and `vol` the song's.
+
+A plain integer is a write, on every cell and in a row, an event, an instrument field and a slot's
+default. It binds the slot it is written to (the cell's first, or the one its prefix names) to a
+once binding of that value: in the cell's phase on the tick it applies the cell takes the integer
+wrapped to its mask, and the slot is then unbound, so the integer fires exactly once. The cell's
+other slots keep their bindings and fire on the value, in slot order. A write applied after its
+cell's phase of that tick (a `read` phase last, say) shows from the next tick's phase. On `freq` the
+integer is `F(N) + n`, and the frequency plays `F(N)` again from the next tick. A binding that is to
+keep firing is an expression or a call; there is no `!` form of an integer. A write counts as a
+bind for the owner of a song cell. A restart's last lookahead row also writes the event's plain
+`ad`, `sr` and `ctrl`. A song cell's slot is bound by a voice and reads
 that voice's `N` and `n`; the owner of a song cell is the voice that last bound one of its slots
 (voice 1 for a default binding), a stop does not change it, and a cell with an owner fires its
 slots once in its phase (a cell of `global` at its owner's visit, a position no other phase can
@@ -390,9 +399,9 @@ refused. A binding names its modulator:
 | `512`, `v + 40` | the expression, which names no template (quoted in a command: `pw:'v + 40'`) |
 | `asm{...}` | the anonymous code body (see [Definitions](#definitions)) |
 
-A slot's default (`slots:{pw:{a:{mod:note()}}}`) is a binding as any other.
+A slot's default (`slots:{pw:{a:{mod:note()}}}`) is a binding as any other, an integer one a write.
 
-A binding written with `!` after it (`pw:800!`, `freq:'F(N) + 9'!`, `tick.freq:snap()!`,
+A binding written with `!` after it (`pw:'v + 800'!`, `freq:'F(N) + 9'!`, `tick.freq:snap()!`,
 `asm{...}!`; in a command, a program row and an instrument's field) is a once binding: it binds
 its slot at phi 0, fires on the first tick its slot fires it (not on a hold event), and then
 leaves the slot unbound as its `none` would: the cell keeps the value it fired, a frequency
@@ -485,11 +494,11 @@ note, in grammar order, a cell's commands in the order written.
 |---|---|
 | `run:c3`, `run:pw2`, `run:f1`, `b.run:c3` | starts that program in the slot its name's kind and its prefix's layer name; refused on a voice that has no instrument yet |
 | `run:none`, `b.run:none` | stops the control layer its prefix names, else the first |
-| `CELL:b`, `slot.CELL:b` | binds the cell's slot to `b`: an integer of `freq`, `pw` or `cut`, a call, an `asm{...}` body or a quoted expression; a song cell's reads this voice's notes |
-| `ctrl:n`, `ad:n`, `sr:n`, `res:n`, `route:n`, `mode:n`, `vol:n` | a plain integer, as the row key |
+| `CELL:b`, `slot.CELL:b` | binds the cell's slot to `b`: a call, an `asm{...}` body or a quoted expression; a song cell's reads this voice's notes |
+| `CELL:n`, `slot.CELL:n` | a plain integer, a write (see [Cells](#cells)) |
 | `CELL:none`, `CELL:hold`, `CELL:reset` | see [Stops](#stops) |
 | `tempo:n`, `tempo:a/b`, `vtempo:...` | see [Time](#time) |
-| `freq:n`, `freq:+n`, `freq:-n` | binds the frequency's slot to `F(N) + n` |
+| `freq:n`, `freq:+n`, `freq:-n` | writes `F(N) + n` to the frequency's slot |
 | `freq:b`, `slot.freq:b` | ... to `b`, a call, an `asm{...}` body or a quoted expression |
 | `legato` | see [Notes](#notes) |
 | `pw`, `filter` | the note keeps its pulse / filter program (see [Notes](#notes)) |
