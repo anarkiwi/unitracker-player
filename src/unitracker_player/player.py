@@ -195,6 +195,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         call_of, now = self.song.call_of, self.song.call_of(s)
         at = {"step": now, "last": now if last else None, "read": None}
         ins = self._ins[v]
+        if event is not None:
+            at["event"] = now
         if event is not None and isinstance(event.note, int):
             at["note"] = None if event.legato else now
             if event.legato:
