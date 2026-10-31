@@ -469,7 +469,7 @@ running outside the routine's code. A looping song with a code modulator has no 
 ## Events
 
 A slot's `hold` and `reset` events, and a pause's (see [Holds](#holds)), name calls of the voice that
-bound the slot; the events of a step (`step`, `last`, `read`, `note`, `legato`) are full calls:
+bound the slot; the events of a step (`step`, `last`, `read`, `note`, `legato`, `event`) are full calls:
 
 | event | the calls of a voice it names |
 |---|---|
@@ -478,6 +478,7 @@ bound the slot; the events of a step (`step`, `last`, `read`, `note`, `legato`) 
 | `read` | each step's first tick less the lookahead of the restart of the voice's instrument as of the step before (its first row's ticks before the note; 0 without a restart); none before the voice has an instrument |
 | `note` | the tick a note without `legato` applies |
 | `legato` | the tick a note with `legato` applies |
+| `event` | the first tick of the first step of each event of its phrases, whatever the event (a note, a `legato` note, `-`, `off`, `on`, or one with commands); none of the other steps of an event's `*k` |
 | `row` | a tick a row of its control program that sets a key other than `ctrl` and `gate` applies (a restart's rows are not its control program's) |
 | `row.KEY` | a tick a row of its control program that sets `KEY` applies; `row.freq` a row binding any slot of `freq` |
 

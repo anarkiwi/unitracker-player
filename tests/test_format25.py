@@ -452,3 +452,30 @@ def test_a_looping_song_with_calls_repeats_from_its_proved_loop():
 def test_a_step_returns_none_where_the_last_frame_is_partial():
     player = Player(load(doc("[C4.i1,-]", ins=BARE, head="tempo:2\ncalls:{frame:3}\n")))
     assert [player.step() is None for _ in range(3)] == [False, True, True]
+
+
+# ---- the event hold event -------------------------------------------------------------------
+
+STEPS = "[C4.i1*3,-*2,C4 legato*2]"
+RISING = "{pw:[" + ",".join(f"{{pw:{10 * k}}}" for k in range(1, 10)) + ",end]}"
+
+
+@pytest.mark.parametrize(
+    "event, expected",
+    [
+        ("event", [0, 10, 20, 20, 30, 30, 40]),
+        ("event-1", [10, 20, 20, 30, 30, 40, 50]),
+    ],
+)
+def test_a_program_pauses_on_the_first_step_of_each_event_alone(event, expected):
+    """At tempo 1 the events C4*3, -*2 and C4 legato*2 begin on calls 0, 3 and 5; the other
+    steps of a *k run the program."""
+    head = f"tempo:1\nholds:{{pw:[{event}]}}\n"
+    assert pulse(play(doc(STEPS, ins=RISING, head=head), 7)) == expected
+
+
+def test_event_occurs_only_on_full_calls():
+    """Frames sample the odd calls; the events begin on the full calls 0, 6 and 10, the program
+    holding there and applying its row 10 k on the k-th call it is not held."""
+    head = "tempo:1\nholds:{pw:[event]}\ncalls:{frame:2,full:[1,0]}\n"
+    assert pulse(play(doc(STEPS, ins=RISING, head=head), 7)) == [10, 30, 50, 60, 80, 90, 90]
