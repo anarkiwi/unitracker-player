@@ -40,7 +40,8 @@ OBSERVED = {
     "start": "(voice, slot, program): a program is about to start in a program slot, None to stop",
     "rewind": "(voice, name): a slot's phi is back at 0 on its reset event, ``name`` its "
     "``slot.cell``",
-    "bind": "(voice, cell, slot, command): a binding is about to be set, by a command or a row",
+    "bind": "(voice, cell, slot, command, fn, once, fresh): a binding is about to be set, by a "
+    "command or a row",
     "stop": "(voice, cell, value, ends): a ``none``, ``hold`` or ``reset`` is about to apply",
     "fire": "(cell, owner, slot, by, fn, phi, value, out, N, n): a slot fired; ``owner`` is the "
     "voice of the cell (0 for a song cell), ``by`` the voice that bound the slot",
@@ -328,7 +329,7 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         instrument nor a ``once`` one."""
         mods = self._mods(v, cell)
         if self.observe:
-            self.observe("bind", v, cell, slot, command)
+            self.observe("bind", v, cell, slot, command, fn, once, fresh)
         mod = mods[slot]
         if not (fresh or once) and mod is not None and mod[0] is fn and not mod[5]:
             mod[2], mod[4] = v, command

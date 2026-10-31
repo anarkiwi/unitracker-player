@@ -43,7 +43,8 @@ def test_fire_reports_each_firing_with_its_phi_and_values():
 
 def test_bind_and_stop_are_reported_before_they_apply():
     log = observed(doc(phrase="[C4.i1 pw:'10*phi + 1',- pw:none,-]", ins=CTRL, head="tempo:1\n"), 3)
-    assert of(log, "bind", "pw") == [(0, (0, "pw", 0, True))]
+    (bound,) = of(log, "bind", "pw")
+    assert bound[0] == 0 and bound[1][:4] == (0, "pw", 0, True) and bound[1][5:] == (False, False)
     assert of(log, "stop", "pw") == [(1, (0, "pw", "none", (0,)))]
     assert [t for t, _ in of(log, "fire", "pw")] == [0]
 
