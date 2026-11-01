@@ -14,3 +14,7 @@ htmlcov/
 .tmp/
 .tunecache/
 /out/
+
+# Process core dumps
+core
+core.[0-9]*
