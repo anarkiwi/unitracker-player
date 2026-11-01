@@ -66,6 +66,7 @@ class _Voice:  # pylint: disable=too-many-instance-attributes
 
     def __init__(self, song: Song):
         self.freq = self.pw = self.ctrl = self.ad = self.sr = self.mask = self.gate = 0
+        self.env = None
         self.note = self.absolute = None
         self.relative = 0
         self.mods = {cell: [None] * len(song.slots[cell]) for cell in VOICE_CELLS}
@@ -73,6 +74,23 @@ class _Voice:  # pylint: disable=too-many-instance-attributes
         self.slots = [[None, 0, 0] for _ in song.kinds]
         self.lost = [0] * len(song.kinds)
         self.state = {cell: bytearray(song.state.get(cell, 0)) for cell in VOICE_CELLS}
+
+    def control(self) -> int:
+        """The control register: the cell's ``ctrl`` with the TEST mask, the gate bit only where
+        the gate is on."""
+        return ((self.ctrl ^ self.mask) & 0xFE) | (self.ctrl & self.gate & 1)
+
+    def settle(self) -> list:
+        """The voice's ``(sr, ad, ctrl)`` writes of the call: those of its env, whose values the
+        cells then hold, else the cells' one."""
+        env, self.env = self.env or (), None
+        out = [] if env else [(self.sr, self.ad, self.control())]
+        for sr, ad, ctrl in env:
+            self.sr, self.ad = (self.sr if sr is None else sr), (self.ad if ad is None else ad)
+            if ctrl is not None:
+                self.ctrl, self.gate = ctrl, ctrl & 1
+            out.append((self.sr, self.ad, self.control()))
+        return out
 
     @property
     def sounding(self) -> int | None:
@@ -92,6 +110,7 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
     def __init__(self, song: Song, observe=None):
         self.song, self.observe = song, observe
         self.call = self.tick = self._stick = 0
+        self.segments = [[] for _ in range(song.voices)]
         self.regs = [0] * REGISTERS
         self.voices = [_Voice(song) for _ in range(song.voices)]
         self._layers = {k: [s for s, own in enumerate(song.kinds) if own == k] for k in SLOTS}
@@ -240,6 +259,7 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
                         self._run_slot(v, slot, c)
             elif full:
                 self._voice_events(c, phase == "read", rows, events)
+        self._settle()
         for ticks in self._held.values():
             ticks.discard(c)
         for v, slot in self._skipped:
@@ -252,8 +272,14 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
             self.regs = self._delay.popleft()
         return True
 
+    def _settle(self):
+        """Appends each voice's writes of the call to its segments of the frame."""
+        for segs, voice in zip(self.segments, self.voices):
+            segs += voice.settle()
+
     def step(self) -> list | None:
         """Plays one frame."""
+        self.segments = [[] for _ in self.voices]
         for _ in range(self.song.frame):
             if not self._call():
                 return None
@@ -281,7 +307,7 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
             regs[at + 1] = voice.freq >> 8
             regs[at + 2] = voice.pw & 0xFF
             regs[at + 3] = voice.pw >> 8
-            regs[at + 4] = ((voice.ctrl ^ voice.mask) & 0xFE) | (voice.ctrl & voice.gate & 1)
+            regs[at + 4] = voice.control()
             regs[at + 5] = voice.ad
             regs[at + 6] = voice.sr
         chip = self.chip
@@ -419,7 +445,9 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         if self.observe:
             self.observe("enter", "apply", v, first, command)
         for key, value in ops:
-            if key == "mask":
+            if key == "env":
+                voice.env = value
+            elif key == "mask":
                 voice.mask = value & 0xFE
                 voice.gate |= first
             elif key == "gate":
