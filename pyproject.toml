@@ -43,9 +43,21 @@ where = ["src"]
 [tool.setuptools.package-data]
 unitracker_player = ["asm/*.s", "asm/*.ld"]
 
+# Wheels carry the native core: `maturin build --release` (CI) or `maturin develop`.
+# The sdist builds with setuptools above and installs the pure-Python player only.
+[tool.maturin]
+manifest-path = "crates/utp-py/Cargo.toml"
+module-name = "unitracker_player._core"
+python-source = "src"
+python-packages = ["unitracker_player"]
+features = ["pyo3/extension-module"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["noncanonical: reads texts other than the canonical one"]
+
+[tool.pylint.main]
+extension-pkg-allow-list = ["unitracker_player._core"]
 
 [tool.pylint.format]
 max-line-length = 100

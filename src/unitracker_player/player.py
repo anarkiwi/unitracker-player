@@ -28,6 +28,9 @@ from unitracker_player.compiler import (
     load,
     written,
 )
+from unitracker_player.native import NativeError
+from unitracker_player.native import player as native_player
+from unitracker_player.native import run as run_native
 from unitracker_player.sequencer import PlayError, Sequencer
 
 PRUNE = 1024
@@ -623,10 +626,23 @@ def _with_envelope(row: tuple, ops: tuple) -> tuple:
 def play(source, ticks: int | None = None, progress: bool = False) -> np.ndarray:
     """The registers at the end of each frame of a document's text or Song, shape ``(frames,
     25)``: to the song's end when ``ticks`` is None (a looping song needs ``ticks``), and fewer
-    rows where the song ends first."""
+    rows where the song ends first. The native call machine plays it where built, else
+    :func:`play_python` does."""
     song = load(source) if isinstance(source, str) else source
     if ticks is None and song.looping:
         raise PlayError("a looping song needs ticks")
+    if (native := native_player(song)) is not None:
+        try:
+            rows = run_native(native, ticks, progress)
+        except NativeError:
+            pass
+        else:
+            return np.frombuffer(rows, dtype=np.uint8).reshape(-1, REGISTERS).copy()
+    return play_python(song, ticks, progress)
+
+
+def play_python(song: Song, ticks: int | None = None, progress: bool = False) -> np.ndarray:
+    """:func:`play` of a Song by the Python call machine."""
     player = Player(song)
     frames = np.zeros((ticks or 0, REGISTERS), dtype=np.uint8)
     rows = []

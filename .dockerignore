@@ -1,0 +1,7 @@
+.git
+.venv
+.tmp
+.tunecache
+target
+**/__pycache__
+.coverage

@@ -13,6 +13,12 @@ instruments, programs, expressions, phrases and timeline, and the note table `F(
 pip install "unitracker-player @ git+https://github.com/anarkiwi/unitracker-player"
 ```
 
+## Native core
+
+Wheels carry a Rust implementation of the call machine that `play` uses by default; the Python
+`Player` plays the same documents where the extension is absent (`UNITRACKER_PLAYER_NATIVE=0`
+switches it off). See [docs/native.md](docs/native.md).
+
 ## Use
 
 ```python
