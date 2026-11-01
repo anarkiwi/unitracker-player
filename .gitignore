@@ -18,3 +18,7 @@ htmlcov/
 # Process core dumps
 core
 core.[0-9]*
+
+# Rust build output
+target/
+*.so
