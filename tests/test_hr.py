@@ -1,5 +1,5 @@
-"""Format 2.4's prelude hard restart: ``restart:hr(lead,ad,sr,test,stop)`` plays as the rows it
-stands for (docs/semantics.md, Hard restart)."""
+"""Format 2.4's prelude hard restart: ``restart:hr(k)`` and ``hr(lead,ad,sr,stop)`` play as the
+rows they stand for (docs/semantics.md, Hard restart)."""
 
 import re
 
@@ -25,21 +25,31 @@ def written(restart: str, version: str = "2.3") -> str:
         ("hr(2,15,0)", "[{hold:2,gate:0,ad:15,sr:0},{},end]"),
         ("hr(1,15,0)", "[{gate:0,ad:15,sr:0},{},end]"),
         ("hr(6,15,0)", "[{hold:6,gate:0,ad:15,sr:0},{},end]"),
-        ("hr(2,15,0,1)", "[{hold:2,mask:8,gate:0,ad:15,sr:0},{mask:0},end]"),
-        ("hr(2,15,0,0,1)", "[{hold:2,gate:0,ad:15,sr:0,run:ctrl[end]},{},end]"),
-        ("hr(1,15,0,1,1)", "[{mask:8,gate:0,ad:15,sr:0,run:ctrl[end]},{mask:0},end]"),
-        ("hr(6,0,0,1,1)", "[{hold:6,mask:8,gate:0,ad:0,sr:0,run:ctrl[end]},{mask:0},end]"),
+        ("hr(2,15,0,1)", "[{hold:2,gate:0,ad:15,sr:0,run:ctrl[end]},{},end]"),
+        ("hr(1,0,0,1)", "[{gate:0,ad:0,sr:0,run:ctrl[end]},{},end]"),
+        ("hr(2)", "[{hold:2,gate:0,sr:'240 & v'!},{},end]"),
+        ("hr(1)", "[{gate:0,sr:'240 & v'!},{},end]"),
+        ("hr(3)", "[{hold:3,gate:0,sr:'240 & v'!},{},end]"),
     ],
 )
 def test_hr_plays_the_rows_it_stands_for(call, rows):
     frames = play(written(call, "2.4"), 80)
-    np.testing.assert_array_equal(frames, play(written(rows), 80))
+    np.testing.assert_array_equal(frames, play(written(rows, "2.5" if "v" in rows else "2.3"), 80))
 
 
-@pytest.mark.parametrize("flag", ["hr(2,15,0,1)", "hr(2,15,0,0,1)"])
-def test_test_and_stop_each_change_what_the_restart_plays(flag):
+def test_stop_changes_what_the_restart_plays():
     plain = reg(play(written("hr(2,15,0)", "2.4"), 80), 4)
-    assert reg(play(written(flag, "2.4"), 80), 4) != plain
+    assert reg(play(written("hr(2,15,0,1)", "2.4"), 80), 4) != plain
+
+
+@pytest.mark.parametrize("k", [1, 2, 3])
+def test_hr_k_releases_the_gate_k_ticks_before_the_note_and_keeps_the_sustain(k):
+    text = written(f"hr({k})", "2.4").replace("sr:240", "sr:167")
+    frames = play(text, 12)
+    gate, sr = reg(frames, 4), reg(frames, 6)
+    off = [t for t in range(3, 12) if not gate[t] & 1]
+    assert off == list(range(12 - k, 12))
+    assert sr[12 - k] == 160 and sr[2] == 167 and sr[12 - k - 1] == 167
 
 
 def test_a_document_s_own_hr_template_is_its_own():
