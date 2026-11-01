@@ -31,7 +31,7 @@ names, instrument and phrase templates, groups, sections, first-use definitions)
 grammar's core expansion (`unitracker_grammar.expand.core`), and once bindings (`pw:'v + 3'!`), plain integers as once writes (`pw:800`),
 `lag:k`, `calls`, `holds`, `global:[cut,res,route,mode,vol]`, the cells `ctrl ad sr res route mode vol`, and 2.4's program layers (`layers:{ctrl:[a,b]}`, `b.ctrl:c7`,
 `b.run:c7`) and per-voice orderlists (` - voice:[p1,p2+2|loop:1]`) itself; 2.4's prelude hard restart
-(`restart:hr(2,15,0)`) plays as the restart rows it stands for. Code templates run as 6502 routines on a
+(`restart:hr(2)`, `restart:hr(2,15,0)`) plays as the restart rows it stands for. Code templates run as 6502 routines on a
 [jennings](https://pypi.org/project/jennings/) MPU, with per-voice state from the document's
 `state` line; templates, in the top-level `mod` section keyed by signatures (`vib(c,s):|`), are
 bound by calls (`wob.freq:vib(3,40)`), and code reads the note table as `F.lo` / `F.hi`. A

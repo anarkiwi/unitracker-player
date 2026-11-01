@@ -119,7 +119,7 @@ document (`unitracker_grammar.expand.core`), so each plays exactly as what it ex
 | a group `[a,b]x3`, in a phrase or among song items | its body that many times (2 or more) |
 | a volta `[body\|end1\|end2]` | the body then `end1`, the body then `end2`, and so on for each ending (2 or more) |
 | a section `s1:[ITEM,...]`; an item `s1`, `s1x2` | the section's items, played out, that many times; a section that plays itself is refused |
-| an instrument's `restart:hr(lead,ad,sr,test,stop)`, `test` and `stop` 0 or 1 and optional, where the document defines no `hr` | the restart rows `[{hold:lead,gate:0,ad:ad,sr:sr},{},end]` (`unitracker_grammar.expand.hr`; no `hold` for a lead of 1), with `test` `mask:8` in the first row and `mask:0` in the last, with `stop` `run:ctrl[end]` in the first; see [Hard restart](#hard-restart) |
+| an instrument's `restart:hr(k)`, `k` 1 to 3, or `hr(lead,ad,sr)`, `hr(lead,ad,sr,stop)`, where the document defines no `hr` | the restart rows `[{hold:k,gate:0,sr:'240 & v'!},{},end]`, or `[{hold:lead,gate:0,ad:ad,sr:sr},{},end]` (`unitracker_grammar.expand.hr`; no `hold` for a lead of 1), with `stop` 1 `run:ctrl[end]` in the first; see [Hard restart](#hard-restart) |
 
 A phrase's octave elision follows the written order, groups included (`[C4,[E|G|A5],B]` is C4
 E4 G4 E4 A5 B5). A song item is a row (`play:[...]`), a section, a group or a section's first
@@ -252,9 +252,11 @@ tick (see [Hard restart](#hard-restart)).
 
 ## Hard restart
 
-The prelude's `hr(lead,ad,sr,test,stop)` (see [Sugar](#sugar)) is the common form: from `lead`
-ticks before the note the gate is off and the envelope `ad`, `sr`; `test` holds the TEST bit
-until the note, and `stop` stops the voice's control program (its first layer's) at the
+The prelude's `hr(k)` (see [Sugar](#sugar)) is the common form: from `k` ticks (1 to 3) before the
+note the gate is off and the release of the voice's `sr` is 0, its sustain kept: the envelope that
+matters is the gate edge and the release it falls at, whatever `ad` and `sr` are written
+meanwhile. `hr(lead,ad,sr)` writes the envelope `ad`, `sr` instead, for a `lead` of 1 tick or more;
+with a fourth argument 1 it stops the voice's control program (its first layer's) at the
 restart's first row, as GoatTracker 2's player does. It plays as its rows.
 
 A voice's restart program is the `restart` of its instrument as of the event (the event's
