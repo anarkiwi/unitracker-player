@@ -2,6 +2,7 @@
 (``unitracker_player._core``), and the machine's use by :func:`unitracker_player.player.play`."""
 
 import ast
+import importlib
 import os
 
 from unitracker_grammar.cells import CELLS, SONG_CELLS
@@ -21,8 +22,7 @@ from unitracker_player.compiler import (
 from unitracker_player.nodes import children, op
 
 try:
-    from unitracker_player import _core
-
+    _core = importlib.import_module("unitracker_player._core")
     NativeError = _core.NativeError
 except ImportError:  # pragma: no cover - the pure Python player stands in
     _core = None
