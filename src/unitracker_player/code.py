@@ -3,6 +3,7 @@
 modulators)."""
 
 from jennings.devices.mpu6502 import MPU
+from jennings.memory import NATIVE, NativeMemory
 from jennings.opcodes import ILLEGAL_OPCODES, OPCODES
 from unitracker_grammar import PAL_HZ, frequency
 from unitracker_grammar.code import LEGAL, NOTES, Imm, Label, Mem, Op, params
@@ -10,6 +11,8 @@ from unitracker_grammar.code import LEGAL, NOTES, Imm, Label, Mem, Op, params
 from unitracker_player.sequencer import PlayError
 
 BUDGET = 4096
+MAX_CYCLES = 8 * BUDGET
+EXIT = 0xFFFF
 SYMBOLS = {"v": 0, "phi": 2, "nn": 4, "ne": 5}
 STATE = 6
 STACK = 0x100
@@ -31,6 +34,7 @@ ENCODE = {
     if opcode not in ILLEGAL_OPCODES
 }
 _SIZE = {"impl": 1, "acc": 1, "imm": 2, "zp": 2, "zpx": 2, "zpy": 2, "rel": 2}
+_RETURN = bytes(((EXIT - 1) & 0xFF, (EXIT - 1) >> 8))
 RUN, PUSH, PULL, RTS, BAD = range(5)
 _RUNS = {
     ENCODE[m, how]
@@ -64,6 +68,17 @@ def _bytes(value: int, byte: str) -> int:
     return word >> 8 if byte == ">" else word & 0xFF
 
 
+def _mpu(memory: bytearray):
+    """A 6502 over ``memory``: jennings' native core running on the bytearray itself where the
+    core is built, else the pure-Python engine."""
+    if not NATIVE:
+        return MPU(memory, TABLES)
+    try:
+        return MPU(memory=NativeMemory(memory, share=True))
+    except ValueError:
+        return MPU(memory=NativeMemory(memory))
+
+
 class Machine:
     """One 6502 and its memory for a song: ``v`` (2 bytes), ``phi`` (2), ``nn``, ``ne`` and
     from :data:`STATE` the state of the routine's cell in zero page; each table's ``T.lo`` then
@@ -91,7 +106,7 @@ class Machine:
         for name, values in tables.items():
             self._table(name, values)
         self.image = bytearray(self.memory)
-        self.mpu = MPU(self.memory, TABLES)
+        self.mpu = _mpu(self.memory)
 
     def _table(self, name: str, values, below: int = 0) -> None:
         """Lays out table ``name`` at the top: ``name.lo`` then ``name.hi``, each
@@ -228,37 +243,61 @@ class Routine:  # pylint: disable=too-few-public-methods
     def __call__(self, v: int, phi: int, note: int, event: int, state: bytearray) -> int:
         machine = self.machine
         mem, mpu = machine.memory, machine.mpu
-        mem[0:STATE] = bytes(
+        inputs = bytes(
             (v & 0xFF, v >> 8 & 0xFF, phi & 0xFF, phi >> 8 & 0xFF, note & 0xFF, event & 0xFF)
         )
-        mem[STATE : STATE + len(state)] = state
-        mpu.a = mpu.x = mpu.y = 0
-        mpu.sp, mpu.p = 0xFF, FLAGS
         try:
+            if getattr(mpu, "native", False) and self._native(mpu, inputs, state):
+                return mem[0] | mem[1] << 8
+            self._load(mpu, inputs, state)
             self._run(mem, mpu)
             state[:] = mem[STATE : STATE + len(state)]
             return mem[0] | mem[1] << 8
         finally:
-            image = machine.image
-            for lo, hi in self.dirty:
-                mem[lo:hi] = image[lo:hi]
+            self._restore()
+
+    def _load(self, mpu, inputs: bytes, state: bytearray) -> None:
+        mem = self.machine.memory
+        mem[0:STATE] = inputs
+        mem[STATE : STATE + len(state)] = state
+        mem[STACK : STACK + 2] = _RETURN
+        mpu.a = mpu.x = mpu.y = 0
+        mpu.sp, mpu.p, mpu.pc = 0xFF, FLAGS, self.start
+
+    def _native(self, mpu, inputs: bytes, state: bytearray) -> bool:
+        """One native ``run_until`` over the firing, stopping at :data:`EXIT`, the address the
+        top-level ``rts`` pulls, when the routine is done. True when it was; the state is then
+        updated. False after any other end (code ran elsewhere, or past the budget), with the
+        memory reset to its image, for the stepped engine to say why."""
+        self._load(mpu, inputs, state)
+        begun = mpu.steps
+        stop = mpu.run_until(max_cycles=MAX_CYCLES, stop_pcs=(EXIT, self.end))
+        if stop != "pc" or mpu.pc != EXIT or mpu.sp != 1 or mpu.steps - begun > BUDGET:
+            self.machine.memory[:] = self.machine.image
+            return False
+        state[:] = self.machine.memory[STATE : STATE + len(state)]
+        return True
+
+    def _restore(self) -> None:
+        mem, image = self.machine.memory, self.machine.image
+        mem[STACK : STACK + 2] = image[STACK : STACK + 2]
+        for lo, hi in self.dirty:
+            mem[lo:hi] = image[lo:hi]
 
     def _run(self, mem, mpu):
         lo, hi, pc = self.start, self.end, self.start
         for _ in range(BUDGET):
             if not lo <= pc < hi:
+                if pc == EXIT and mpu.sp == 1:
+                    return
                 raise PlayError(f"{self.name}: runs outside its code, at ${pc:04x}")
             kind = KIND[mem[pc]]
-            if kind:
-                sp = mpu.sp
-                if kind == RTS and sp == 0xFF:
-                    return
-                if kind == BAD:
-                    raise PlayError(f"{self.name}: runs opcode ${mem[pc]:02x} at ${pc:04x}")
-                if kind == PUSH and sp == 0:
-                    raise PlayError(f"{self.name}: the stack overflows at ${pc:04x}")
-                if sp >= (0xFE if kind == RTS else 0xFF) and kind != PUSH:
-                    raise PlayError(f"{self.name}: the stack underflows at ${pc:04x}")
+            if kind == BAD:
+                raise PlayError(f"{self.name}: runs opcode ${mem[pc]:02x} at ${pc:04x}")
+            if kind == PUSH and mpu.sp == 0:
+                raise PlayError(f"{self.name}: the stack overflows at ${pc:04x}")
+            if kind == RTS and mpu.sp == 0xFE or kind == PULL and mpu.sp == 0xFF:
+                raise PlayError(f"{self.name}: the stack underflows at ${pc:04x}")
             mpu.pc = pc
             mpu.step()
             pc = mpu.pc

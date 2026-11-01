@@ -1,6 +1,8 @@
 """Code modulators assembled and fired on their 6502 (docs/semantics.md, Code
 modulators)."""
 
+import random
+
 import pytest
 from jennings.disassembler import Disassembler
 from jennings.opcodes import OPCODES
@@ -234,3 +236,44 @@ def test_a_note_table_past_memory_is_refused():
     machine = Machine({"T": (0,) * 0x7E01}, {})
     with pytest.raises(PlayError, match="F: the tables and routines overflow memory"):
         routine("lda F.lo\nrts", machine)
+
+
+def _random_program(rng) -> str:
+    """Ops drawn from every legal (mnemonic, mode): memory operands on ``v``, ``nn`` and the
+    ``T`` table, forward branches to labels, ending in ``rts``."""
+    lines = []
+    for i in range(rng.randrange(1, 40)):
+        mnemonic, mode = rng.choice(sorted(LEGAL - {("rts", "implied"), ("txs", "implied")}))
+        if mode == "label":
+            lines.append(f"{mnemonic} l{i + rng.randrange(1, 6)}" if mnemonic != "jmp" else "nop")
+        elif mode == "implied":
+            lines.append(mnemonic)
+        elif mode == "immediate":
+            lines.append(f"{mnemonic} #{rng.randrange(256)}")
+        else:
+            index = mode.partition(",")[2]
+            operand = rng.choice(["v", "v+1", "nn", "T.lo+3", "T.hi"])
+            lines.append(f"{mnemonic} {operand}" + (f",{index}" if index else ""))
+        lines.append(f"l{i}:")
+    return "\n".join(lines + [f"l{i + k}:" for k in range(1, 6)] + ["rts"])
+
+
+def _outcome(src: str, native: bool, monkeypatch, args):
+    monkeypatch.setattr(code, "NATIVE", native)
+    machine = Machine(T1, {"freq": (("s", 2),)})
+    state = bytearray(2)
+    try:
+        r = machine.compile("r", statements(src + "\n", {"s"}), {}, "freq")
+        return r(*args, state), bytes(state), bytes(machine.memory) == bytes(machine.image)
+    except PlayError as exc:
+        return str(exc)
+
+
+@pytest.mark.parametrize("seed", range(300))
+def test_the_native_core_and_the_stepped_engine_run_every_firing_alike(seed, monkeypatch):
+    """A random routine returns the same ``v`` and state, or the same refusal, on jennings'
+    native core and on the Python engine, and leaves the memory as laid out."""
+    rng = random.Random(seed)
+    src = _random_program(rng)
+    args = (rng.randrange(65536), rng.randrange(65536), rng.randrange(256), rng.randrange(256))
+    assert _outcome(src, True, monkeypatch, args) == _outcome(src, False, monkeypatch, args)
