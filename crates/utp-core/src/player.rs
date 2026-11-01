@@ -140,6 +140,7 @@ pub struct Player {
     owner: [i32; CELLS],
     song_state: [Vec<u8>; CELLS],
     mods: Vec<Mod>,
+    stack: Vec<i64>,
     mod_off: [usize; CELLS],
     mod_total: usize,
     seq: Sequencer,
@@ -205,6 +206,7 @@ impl Player {
             owner: [NONE; CELLS],
             song_state: std::array::from_fn(|c| vec![0; spec.state[c]]),
             mods: vec![NO_MOD; (nv + 1) * mod_total],
+            stack: vec![0; spec.depth],
             mod_off,
             mod_total,
             seq: Sequencer::new(spec),
@@ -845,7 +847,9 @@ impl Player {
                 let note = voice.sounding().unwrap_or(0);
                 let event = voice.note.unwrap_or(0);
                 let out = match &spec.funcs[m.func as usize] {
-                    Func::Expr(code) => expr::eval(code, &spec.tables, value, phi, note, event),
+                    Func::Expr(code) => {
+                        expr::eval(code, &spec.tables, &mut self.stack, value, phi, note, event)
+                    }
                     Func::Code(i) => {
                         let state = if song_cell(cell) {
                             &mut self.song_state[cell]

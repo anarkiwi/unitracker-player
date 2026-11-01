@@ -2,8 +2,6 @@
 //! wrapping integers with Python's floor division and modulo, and 0 for a division by 0 and a
 //! shift by a negative count.
 
-pub const DEPTH: usize = 32;
-
 pub mod code {
     pub const CONST: i64 = 0;
     pub const V: i64 = 1;
@@ -111,10 +109,18 @@ fn shr(a: i64, b: i64) -> i64 {
     }
 }
 
-/// The code's value at `(v, phi, n_sounding, n_event)`; the code is checked by [`check`].
-pub fn eval(code: &[i64], tables: &Tables, v: i64, phi: i64, note: i64, event: i64) -> i64 {
+/// The code's value at `(v, phi, n_sounding, n_event)`, on `stack` of at least the depth
+/// [`check`] gave.
+pub fn eval(
+    code: &[i64],
+    tables: &Tables,
+    stack: &mut [i64],
+    v: i64,
+    phi: i64,
+    note: i64,
+    event: i64,
+) -> i64 {
     use code::*;
-    let mut stack = [0i64; DEPTH];
     let mut top = 0usize;
     let mut pc = 0usize;
     macro_rules! binary {
@@ -210,11 +216,11 @@ pub fn eval(code: &[i64], tables: &Tables, v: i64, phi: i64, note: i64, event: i
     stack[0]
 }
 
-/// Whether `code` is well formed: known operators, operands present, a stack that never
-/// under- or overflows and leaves one value, tables in range.
-pub fn check(code: &[i64], tables: usize) -> Result<(), String> {
+/// The stack depth `code` needs, if it is well formed: known operators, operands present, a
+/// stack that never underflows and leaves one value, tables in range.
+pub fn check(code: &[i64], tables: usize) -> Result<usize, String> {
     use code::*;
-    let (mut pc, mut depth) = (0usize, 0i64);
+    let (mut pc, mut depth, mut most) = (0usize, 0i64, 0i64);
     while pc < code.len() {
         let op = code[pc];
         pc += 1;
@@ -236,12 +242,10 @@ pub fn check(code: &[i64], tables: usize) -> Result<(), String> {
             return Err("malformed code".into());
         }
         depth += pushes - pops;
-        if depth as usize > DEPTH {
-            return Err("expression too deep".into());
-        }
+        most = most.max(depth);
     }
     if depth == 1 {
-        Ok(())
+        Ok(most as usize)
     } else {
         Err("expression leaves no one value".into())
     }
@@ -261,8 +265,20 @@ mod tests {
     }
 
     fn run(code: &[i64]) -> i64 {
-        check(code, 1).unwrap();
-        eval(code, &tables(), 100, 3, 4, 5)
+        let mut stack = vec![0; check(code, 1).unwrap()];
+        eval(code, &tables(), &mut stack, 100, 3, 4, 5)
+    }
+
+    #[test]
+    fn depth_is_what_the_code_needs_however_deep() {
+        let mut code = vec![CONST, 1];
+        for k in 2..=40 {
+            code.extend([CONST, k]);
+        }
+        code.extend(std::iter::repeat_n(ADD, 39));
+        assert_eq!(check(&code, 0).unwrap(), 40);
+        assert_eq!(run(&code), (1..=40).sum());
+        assert_eq!(check(&[CONST, 1, NEG], 0).unwrap(), 1);
     }
 
     #[test]

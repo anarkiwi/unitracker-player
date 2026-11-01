@@ -160,6 +160,7 @@ pub struct Spec {
     pub slot_marks: Vec<(i32, i32)>,
     pub pauses: Vec<i32>,
     pub funcs: Vec<Func>,
+    pub depth: usize,
     pub routines: Vec<Routine>,
     pub envs: Vec<Vec<[i64; 3]>>,
     pub ops: Vec<Op>,
@@ -349,12 +350,13 @@ impl Spec {
         }
         let nfuncs = r.size()?;
         let mut funcs = Vec::with_capacity(nfuncs);
+        let mut depth = 1;
         for _ in 0..nfuncs {
             match r.int()? {
                 0 => {
                     let n = r.size()?;
                     let code = r.ints(n)?;
-                    expr::check(&code, tables.named.len())?;
+                    depth = depth.max(expr::check(&code, tables.named.len())?);
                     funcs.push(Func::Expr(code));
                 }
                 1 => funcs.push(Func::Code(r.size()?)),
@@ -595,6 +597,7 @@ impl Spec {
             slot_marks,
             pauses,
             funcs,
+            depth,
             routines,
             envs,
             ops,
