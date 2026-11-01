@@ -18,6 +18,14 @@ fn fail(message: String) -> PyErr {
     NativeError::new_err(message)
 }
 
+/// `body`'s result, a panic of the native player being a [`NativeError`] the caller falls back
+/// from.
+fn guarded<T>(body: impl FnOnce() -> Result<T, String>) -> PyResult<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(body))
+        .map_err(|_| fail("the native player panicked".into()))?
+        .map_err(fail)
+}
+
 /// A compiled document and the state of its play.
 #[pyclass]
 struct NativePlayer {
@@ -32,14 +40,14 @@ impl NativePlayer {
     #[new]
     #[pyo3(signature = (spec, image=None))]
     fn new(spec: Vec<i64>, image: Option<&[u8]>) -> PyResult<Self> {
-        let spec = Spec::parse(spec).map_err(fail)?;
+        let spec = guarded(|| Spec::parse(spec))?;
         let machine = match image {
             Some(bytes) if !bytes.is_empty() => {
-                Some(Machine::new(bytes, &spec.routines).map_err(fail)?)
+                Some(guarded(|| Machine::new(bytes, &spec.routines))?)
             }
             _ => None,
         };
-        let player = Player::new(&spec, machine).map_err(fail)?;
+        let player = guarded(|| Player::new(&spec, machine))?;
         Ok(NativePlayer { spec, player })
     }
 
@@ -57,7 +65,7 @@ impl NativePlayer {
 
     /// The registers after the next frame, or None once the song has ended.
     fn step<'py>(&mut self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyBytes>>> {
-        let regs = self.player.step(&self.spec).map_err(fail)?;
+        let regs = guarded(|| self.player.step(&self.spec))?;
         Ok(regs.map(|r| PyBytes::new(py, &r)))
     }
 
@@ -65,8 +73,8 @@ impl NativePlayer {
     /// ends first.
     fn run<'py>(&mut self, py: Python<'py>, frames: usize) -> PyResult<Bound<'py, PyBytes>> {
         let (spec, player) = (&self.spec, &mut self.player);
-        let out = py
-            .detach(|| {
+        let out = py.detach(|| {
+            guarded(|| {
                 let mut out = Vec::with_capacity(frames * REGISTERS);
                 for _ in 0..frames {
                     match player.step(spec)? {
@@ -76,7 +84,7 @@ impl NativePlayer {
                 }
                 Ok(out)
             })
-            .map_err(fail)?;
+        })?;
         Ok(PyBytes::new(py, &out))
     }
 

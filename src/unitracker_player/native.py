@@ -25,7 +25,7 @@ try:
     _core = importlib.import_module("unitracker_player._core")
     NativeError = _core.NativeError
 except ImportError:  # pragma: no cover - the pure Python player stands in
-    _core = None
+    _core = None  # pylint: disable=invalid-name
 
     class NativeError(RuntimeError):  # type: ignore[no-redef]
         """The native call machine could not play the song."""
