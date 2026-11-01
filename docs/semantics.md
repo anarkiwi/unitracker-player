@@ -547,6 +547,24 @@ does not run on a reduced call. A program or binding a phase starts after its ow
 phase has run this tick applies from the next tick, and a `row` or `row.KEY` event is a control
 program row the `ctrl` phase applied before that tick's modulator phase.
 
+## Env
+
+`env:S/S/...`, a row key and an event command (format 2.5), is a voice's envelope writes within one
+call: up to four segments `sr.ad.ctrl`, each value an integer or `_`. It applies after the call's
+phases, so it has the last word on the voice's `sr`, `ad` and `ctrl` over the control program,
+modulators and the commands of the call, wherever the order of those fell. A `_` is the value
+held: the first segment's the call's phases left, each later one's the segment before. The `ctrl`
+of a segment sets the cell and the gate to its bit 0; the register is `ctrl` as in
+[Registers](#registers).
+
+A segment ends at a gate or TEST edge of the `ctrl` between it and the next that both write;
+otherwise the document is refused. The envelope a frame commands is its gate edges and the `sr`
+and `ad` in force at each edge and at the end, which is why a segment's three writes are in the
+fixed order `sr`, `ad`, `ctrl`. `env:_._.65` is `ctrl:65` (but for a control program that
+rebinds the cell, which the env follows). `Player.segments[v]` lists voice `v`'s segments of the
+frame just played, those of each of its calls in turn (a call without an env one segment, the
+cells' values); `.sid` files and `play()` take the last segment's, the frame's state.
+
 ## Observing
 
 `Player(song, observe)` calls `observe(kind, *args)` as the machine steps, for tools that need what

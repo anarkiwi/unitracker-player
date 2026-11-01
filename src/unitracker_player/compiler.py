@@ -45,8 +45,9 @@ SEQUENCE = ("cut", "ctl", "ad", "sr", "res", "route", "mode", "vol")
 DEFAULT_ORDER = ("events", "ctrl", "pulse", "filter", "freq", "pw", "cut", *SEQUENCE[1:])
 REQUIRED = frozenset("events ctrl pulse filter freq pw cut read".split())
 STOPS = (NONE, HOLD, RESET)
-ROW_KEYS = frozenset("ctrl gate note ad sr pw cut res route mode freq run vol".split())
-EVENT_KEY = {"mask": "ctrl", "route_on": "route", "route_off": "route"}
+ROW_KEYS = frozenset("ctrl gate note ad sr pw cut res route mode freq run vol env".split())
+EDGES = 0x09
+EVENT_KEY = {"mask": "ctrl", "env": "ctrl", "route_on": "route", "route_off": "route"}
 PRELUDE_TEMPLATES = {
     (sig := signature(key))[0]: (sig[1], Expr(text)) for key, text in PRELUDE.items()
 }
@@ -193,6 +194,15 @@ def _bound(value, bag: dict):
     elif isinstance(value, Once):
         return Once(_bound(value.value, bag))
     return value
+
+
+def _env(value) -> tuple:
+    """An env's segments ``(sr, ad, ctrl)``; PlayError unless each ends at a gate or TEST edge
+    of the control byte."""
+    for before, after in zip(value.segments, value.segments[1:]):
+        if None not in (before[2], after[2]) and not (before[2] ^ after[2]) & EDGES:
+            raise PlayError(f"env {value}: a segment ends at a gate or TEST edge")
+    return value.segments
 
 
 def _ticks(value: int, where) -> int:
@@ -410,6 +420,8 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
                 out.append(self.cell(key, value))
             elif name == "run":
                 out.append(("run", self.run(key, value)))
+            elif name == "env":
+                out.append(("env", _env(value)))
             elif name == "note":
                 absolute = isinstance(value, str)
                 out.append(("note", ("abs", note_number(value)) if absolute else ("rel", value)))
