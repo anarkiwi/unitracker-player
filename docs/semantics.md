@@ -468,6 +468,11 @@ firing (the last `rts` among them), a pull or `rts` on an empty stack, a 257th b
 running outside the routine's code. A looping song with a code modulator has no proved loop:
 `unitracker-sid` needs `--ticks` for it.
 
+A firing is one native `run_until` on jennings' core, over the song's memory itself, where the
+core is built; it stops at the address the top-level `rts` pulls, and any other end (code
+elsewhere, past the budget) is replayed on the stepped engine, which says why. Without the
+core the stepped engine runs every firing.
+
 ## Events
 
 A slot's `hold` and `reset` events, and a pause's (see [Holds](#holds)), name calls of the voice that
