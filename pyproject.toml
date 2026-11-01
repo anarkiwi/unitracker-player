@@ -13,7 +13,7 @@ authors = [{ name = "Josh Bailey" }]
 classifiers = ["Operating System :: POSIX :: Linux", "Programming Language :: Python :: 3"]
 dependencies = [
   "unitracker-grammar>=0.21.0",
-  "jennings>=0.2",
+  "jennings>=0.9.0",
   "lark>=1.2",
   "numpy>=1.26",
   "tqdm>=4.66",
