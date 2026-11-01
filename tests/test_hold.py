@@ -3,11 +3,13 @@
 
 import ast
 
+import numpy as np
 import pytest
 from song import cutoff, doc, freq, pulse
 from unitracker_grammar import frequency as F
 
 from unitracker_player import Player, load, play
+from unitracker_player import player as player_module
 
 SWEEP = "{ctrl:[{ctrl:65},end],pw:10*phi + 1}"
 
@@ -133,3 +135,20 @@ def test_a_compiled_expression_carries_its_node():
     player = Player(song)
     player.step()
     assert ast.unparse(player.voices[0].mods["pw"][0][0].node) == "10 * phi + 1"
+
+
+@pytest.mark.parametrize("prune", [1, 64, 1 << 30])
+def test_holds_play_alike_however_often_the_held_calls_are_pruned(prune, monkeypatch):
+    """Calls long past leave a voice's held sets, and a hold on every step plays the same
+    frames whether they are pruned on every call or never."""
+    phrase = "[C4.i1," + ",".join(["D"] * 300) + "]"
+    text = doc(phrase=phrase, ins=SWEEP, head="tempo:3\n" + holding("pw", "step"))
+    monkeypatch.setattr(player_module, "PRUNE", 1 << 30)
+    never = play(text, 900)
+    monkeypatch.setattr(player_module, "PRUNE", prune)
+    player = Player(load(text))
+    rows = np.array([player.step() for _ in range(900)], dtype=np.uint8)
+    assert (rows == never).all()
+    held = player._held  # pylint: disable=protected-access
+    stale = [t for ticks in held.values() for t in ticks if t < player.call - 2 * prune]
+    assert not stale or prune == 1 << 30

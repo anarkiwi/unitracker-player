@@ -98,7 +98,11 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
     mods = {cell: tuple(periods.mod(m) for m in ms) for cell, ms in player.song_mods.items()}
     voices = tuple(_voice(v, c, periods) for v in player.voices)
     ins = player._ins  # pylint: disable=protected-access
-    held = {k: {x - c for x in v} for k, v in player._held.items() if v}  # pylint: disable=W0212
+    held = {
+        k: {x - c for x in v if x >= c}
+        for k, v in player._held.items()  # pylint: disable=protected-access
+        if any(x >= c for x in v)
+    }
     delay = tuple(map(tuple, player._delay))  # pylint: disable=protected-access
     cells = (player.chip, player.owner, mods)
     return _freeze((voices, cells, sequencer, ins, pending, held, delay), c)

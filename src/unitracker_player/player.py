@@ -30,6 +30,7 @@ from unitracker_player.compiler import (
 )
 from unitracker_player.sequencer import PlayError, Sequencer
 
+PRUNE = 1024
 OBSERVED = {
     "event": "(voice, event, instrument): an event begins to apply",
     "enter": "(scope, voice, *args): ``apply`` with ``(first, command)`` for the keys of a row or "
@@ -126,6 +127,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         self._events = defaultdict(list)
         self._lookahead = defaultdict(list)
         self._held = defaultdict(set)
+        self._markable = frozenset(song.marks) | frozenset(song.rows)
+        self._mark_keys = {}
         self._skipped = []
         self._pauses = {int(m.split()[1]): m for m in song.marks if m.startswith("pause")}
         self._phases = [(name, CELL_OF.get(name)) for name in song.order]
@@ -227,8 +230,13 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
 
     def _marked(self, v: int, mark: str, c: int) -> bool:
         """Whether call ``c`` is one of voice ``v``'s events of ``mark``."""
-        rows = self.song.rows.get(mark, ())
-        return c in self._held[v, mark] or any(c in self._held[v, e] for e in rows)
+        if mark not in self._markable:
+            return False
+        held = self._held
+        if c in held[v, mark]:
+            return True
+        rows = self.song.rows.get(mark)
+        return bool(rows) and any(c in held[v, e] for e in rows)
 
     def _advance(self):
         """Schedules the steps that begin by the song's horizon past the current tick."""
@@ -260,8 +268,7 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
             elif full:
                 self._voice_events(c, phase == "read", rows, events)
         self._settle()
-        for ticks in self._held.values():
-            ticks.discard(c)
+        self._prune(c)
         for v, slot in self._skipped:
             self.voices[v].lost[slot] += 1
         self._skipped.clear()
@@ -271,6 +278,12 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
             self._delay.append(self.registers(list(song.regs)))
             self.regs = self._delay.popleft()
         return True
+
+    def _prune(self, c: int):
+        """Drops the held calls up to ``c`` from the sets, every :data:`PRUNE` calls."""
+        if not c & PRUNE - 1:
+            for ticks in self._held.values():
+                ticks.difference_update([t for t in ticks if t <= c])
 
     def _settle(self):
         """Appends each voice's writes of the call to its segments of the frame."""
@@ -404,7 +417,11 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         if (mark := self._pauses.get(kind)) and self._marked(v, mark, c):
             self._skipped.append((v, kind))
             return
-        slots, seen, control = voice.slots, set(), self.song.kinds[kind] == CONTROL
+        slots = voice.slots
+        slot = slots[kind]
+        if slot[0] is None or slot[2] > c - voice.lost[kind]:
+            return
+        seen, control = set(), self.song.kinds[kind] == CONTROL
         clock = c - voice.lost[kind]
         while (slot := slots[kind])[0] is not None and slot[2] <= clock:
             prog, index = slot[0], slot[1]
@@ -516,29 +533,39 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         if self.observe:
             self.observe("leave", "instrument")
 
+    # pylint: disable-next=too-many-locals
     def _chain(self, mods: list, value: int, cell: str, owner: int = 0) -> int | None:
         """The cell's value ``value`` after its modulators ``mods`` fire, or None where it has
         none. A slot fires on the value the slot before left unless it holds on its voice's events,
         its phi first back at 0 on its reset events, and a once binding is then unbound."""
         if not any(mods):
             return None
-        c, mask = self.call, MASKS[cell]
+        c, mask, marked, observe = self.call, MASKS[cell], self._marked, self.observe
         for k, mod in enumerate(mods):
             if mod is None:
                 continue
-            if self._marked(mod[2], "reset " + mod[3], c):
+            name = mod[3]
+            keys = self._mark_keys.get(name)
+            if keys is None:
+                reset, hold = "reset " + name, "hold " + name
+                keys = self._mark_keys[name] = (
+                    reset if reset in self._markable else None,
+                    hold if hold in self._markable else None,
+                )
+            reset, hold = keys
+            if reset and marked(mod[2], reset, c):
                 mod[1] = 0
-                if self.observe:
-                    self.observe("rewind", mod[2], mod[3])
-            if not self._marked(mod[2], "hold " + mod[3], c):
+                if observe:
+                    observe("rewind", mod[2], name)
+            if not (hold and marked(mod[2], hold, c)):
                 fn, notes = mod[0], self._notes(mod[2])
                 if type(fn) is Routine:  # pylint: disable=unidiomatic-typecheck
                     state = self.song_state if cell in SONG_CELLS else self.voices[mod[2]].state
                     out = fn(value, mod[1], *notes, state[cell]) & mask
                 else:
                     out = fn(value, mod[1], *notes) & mask
-                if self.observe:
-                    self.observe("fire", cell, owner, k, mod[2], fn, mod[1], value, out, *notes)
+                if observe:
+                    observe("fire", cell, owner, k, mod[2], fn, mod[1], value, out, *notes)
                 value = out
                 mod[1] += 1
                 if mod[5]:
@@ -560,13 +587,16 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
             if out is not None:
                 self.chip[cell] = out
             return
+        observe, freq = self.observe, cell == "freq"
         for v, voice in enumerate(self.voices):
-            if cell == "freq":
+            if freq:
                 self._fire_freq(v)
-            elif (out := self._chain(voice.mods[cell], getattr(voice, cell), cell, v)) is not None:
-                setattr(voice, cell, out)
-            if self.observe:
-                self.observe("cell", cell, v)
+            elif (mods := voice.mods[cell]) and any(mods):
+                out = self._chain(mods, getattr(voice, cell), cell, v)
+                if out is not None:
+                    setattr(voice, cell, out)
+            if observe:
+                observe("cell", cell, v)
 
     def _fire_freq(self, v: int):
         voice = self.voices[v]
