@@ -567,6 +567,11 @@ rebinds the cell, which the env follows). `Player.segments[v]` lists voice `v`'s
 frame just played, those of each of its calls in turn (a call without an env one segment, the
 cells' values); `.sid` files and `play()` take the last segment's, the frame's state.
 
+`ctrl:[a,b,...]`, a row key and an event command (two integers or more, no slot prefix), is an env
+of one `ctrl` segment per value, the segment edge rule not applying: the control register is written
+each value in the order given (a call that pulses TEST repeatedly, as sample playback does) and the
+cell and gate hold the last.
+
 ## Observing
 
 `Player(song, observe)` calls `observe(kind, *args)` as the machine steps, for tools that need what

@@ -23,6 +23,7 @@ from unitracker_grammar.model import (
     Once,
     Program,
     Row,
+    Writes,
     base,
 )
 from unitracker_grammar.prelude import PRELUDE
@@ -203,6 +204,13 @@ def _env(value) -> tuple:
         if None not in (before[2], after[2]) and not (before[2] ^ after[2]) & EDGES:
             raise PlayError(f"env {value}: a segment ends at a gate or TEST edge")
     return value.segments
+
+
+def _writes(key: str, value: Writes) -> tuple:
+    """The segments of a control write list: each value the control register alone, in order."""
+    if key != "ctrl":
+        raise PlayError(f"{key}: a write list is the control register's alone")
+    return tuple((None, None, v & 0xFF) for v in value.values)
 
 
 def _ticks(value: int, where) -> int:
@@ -416,7 +424,9 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
         out = []
         for key, value in keys:
             name = base(key)
-            if name in CELLS:
+            if isinstance(value, Writes):
+                out.append(("env", _writes(key, value)))
+            elif name in CELLS:
                 out.append(self.cell(key, value))
             elif name == "run":
                 out.append(("run", self.run(key, value)))

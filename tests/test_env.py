@@ -77,3 +77,19 @@ def test_a_program_row_writes_an_env():
     ins = "{ad:9,sr:240,ctrl:[{ctrl:65},{env:_._.64/_._.65},{env:_._.64/_._.65},end]}"
     out = segments("[C4.i1,-,-]", ins, 4)
     assert out[1] == [(240, 9, 64), (240, 9, 65)] and out[2] == out[1]
+
+
+def test_a_control_list_writes_the_register_in_order_and_the_cell_holds_the_last():
+    out = segments("[C4.i1,-,D ctrl:[9,1,9,1,8],-]")
+    assert out[2] == [(240, 9, v) for v in (9, 1, 9, 1, 8)]
+    assert out[3] == [(240, 9, 8)]
+
+
+def test_a_control_list_is_what_the_same_env_with_each_value_a_segment_plays():
+    listed = played("[C4.i1,-,D ctrl:[8,9,8,9],-]")
+    np.testing.assert_array_equal(listed, played("[C4.i1,-,D env:_._.8/_._.9/_._.8/_._.9,-]"))
+
+
+def test_a_control_list_takes_no_slot():
+    with pytest.raises(PlayError, match="control register"):
+        played("[C4.i1,-,D t.ctrl:[8,9],-]")
