@@ -82,6 +82,16 @@ class Unsupported(ValueError):
     """A document the native call machine does not play."""
 
 
+def _pair(tempo: tuple | None, none: tuple = ()) -> tuple:
+    """A tempo list as the pair the native machine alternates, ``none`` for no tempo;
+    Unsupported for a list of more than two entries."""
+    if tempo is None:
+        return none
+    if len(tempo) > 2:
+        raise Unsupported("a tempo of more than two entries")
+    return tempo * (3 - len(tempo))
+
+
 def enabled() -> bool:
     """Whether the native call machine is built in and not switched off by the environment
     variable ``UNITRACKER_PLAYER_NATIVE=0``."""
@@ -178,6 +188,8 @@ class _Export:  # pylint: disable=too-many-instance-attributes
             return RUN, 0, slot, self.prog(prog), 0, 0, chip
         if key not in CELL_ID:
             raise Unsupported(f"op {key}")
+        if max((value[0],) if isinstance(value[0], int) else value[1]) >= len(self.song.slots[key]):
+            raise Unsupported(f"the term of {key}")
         chip = int(key in SONG_CELLS)
         if isinstance(value[0], int):
             slot, fn, once = value
@@ -259,8 +271,8 @@ class _Export:  # pylint: disable=too-many-instance-attributes
             ops = self.span(encoded)
             kept = [(k, v) for k, v in event.ops if k in ENVELOPE and written(v)]
             envelope = self.span(self.encode(kept))
-            tempo = event.tempo or (-1, -1)
-            vtempo = event.vtempo or (-1, -1)
+            tempo = _pair(event.tempo, (-1, -1))
+            vtempo = _pair(event.vtempo, (-1, -1))
             self.events[at] = (
                 kind,
                 value,
@@ -332,7 +344,7 @@ class _Export:  # pylint: disable=too-many-instance-attributes
         out = [MAGIC, song.voices, song.frame, song.lag]
         out += [len(song.full or ()), *map(int, song.full or ())]
         out += list(song.regs)
-        out += [song.horizon, *song.tempo]
+        out += [song.horizon, *_pair(song.tempo)]
         phases = []
         for name in song.order:
             if cell := CELL_OF.get(name):

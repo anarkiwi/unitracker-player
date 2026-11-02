@@ -103,14 +103,14 @@ class Sequencer:  # pylint: disable=too-many-instance-attributes
                 out.append((t, v, event, self.transpose[v], last))
             for v in due:
                 self.next[v] = t + self.tempo[v][self.phase[v]]
-                self.phase[v] ^= 1
+                self.phase[v] = (self.phase[v] + 1) % len(self.tempo[v])
         return out
 
 
 def loops(song) -> tuple:
     """Per voice of an orderlist song ``(loop entry, tick, period)``: the voice's steps from
     ``tick``, a start of its loop entry, repeat every ``period`` ticks, the first span between
-    two starts of it at the same tempo and swing phase; None for a voice that ends."""
+    two starts of it at the same tempo list and position in it; None for a voice that ends."""
     seq, out = Sequencer(song), [None] * song.voices
     todo = {v for v, (_, loop) in enumerate(song.orders) if loop is not None}
     limit = 1

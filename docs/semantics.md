@@ -19,7 +19,7 @@ unitracker-grammar's model (`unitracker_grammar.document`) after `unitracker_gra
 | `meta` | read and kept; it plays nothing |
 | `clock` | `clock_hz` is the clock `F(k)` is computed at (default PAL, 985248; see [Modulators](#modulators)); `cycles_per_tick` is kept and plays nothing |
 | `voices` | 1 to 3 (default 3); more is refused. Voices number from 1; voice `i` writes `$D400 + 7(i - 1)` |
-| `tempo` | `n` ticks per step, or `[a,b]`, steps alternating `a` and `b` (default 6); 0 is refused |
+| `tempo` | `n` ticks per step, or a list `[t0,t1,...]`, steps taking its entries in turn (default 6); 0 is refused |
 | `slots` | per cell (any of the ten of [Cells](#cells)), its modulator slots (see [Slots](#slots)) |
 | `layers` | per program kind, its layers (see [Layers](#layers)) |
 | `holds` | per program kind or layer, the events its programs pause on (see [Holds](#holds)) |
@@ -145,11 +145,12 @@ call binds a cell:
 
 A call is one run of the phases of a tick; the sequencer's ticks are the full calls (see
 [Calls](#calls)), and without a `calls` line every call is full and a frame is one call, so a tick
-is one frame. Each voice has its own tempo `(a, b)` and swing phase: a step of the voice
-lasts `a` ticks and the next `b`, alternating (`n` is `(n, n)`). A step's length is fixed when
-it begins, after the events of every voice at that tick have applied their tempo commands:
-the `tempo` command sets every voice's tempo and returns every voice's alternation to `a`, `vtempo` this
-voice's, from the step that begins at or after the command.
+is one frame. Each voice has its own tempo list `t0, t1, ...` of one entry or more and an index into it: step
+`k` of the voice, counted from the last `tempo` or `vtempo` that applied to it (from the start of
+the song, at the header's list), lasts `t[k mod len]` ticks (`n` is the list of one entry, `a/b` of
+two). A step's length is fixed when it begins, after the events of every voice at that tick have
+applied their tempo commands: the `tempo` command sets every voice's list and returns every
+voice's index to 0, `vtempo` this voice's, from the step that begins at or after the command.
 
 A voice's event applies at the first tick of its step, or earlier (see
 [Hard restart](#hard-restart)); `*k` makes it last `k` steps, the steps after its first empty
@@ -199,7 +200,7 @@ filter and volume commands act when the voice that carries them plays them.
 
 The compiled song's `periods` gives per voice `(k, tick, period)` (sequencer ticks): the voice starts its loop entry
 `k` at `tick` and its steps repeat every `period` ticks from there, the first span between two
-starts of entry `k` at the same tempo and swing phase (None for a voice that ends). The whole
+starts of entry `k` at the same tempo list and index in it (None for a voice that ends). The whole
 song's registers then repeat with the common multiple of the periods, from the latest `tick`;
 `render` proves its loop where the first looping voice starts its loop entry.
 
@@ -377,6 +378,29 @@ that voice's `N` and `n`; the owner of a song cell is the voice that last bound 
 slots once in its phase (a cell of `global` at its owner's visit, a position no other phase can
 tell from the phase).
 
+### Terms
+
+`freq`, `pw`, `cut` and `ctrl` have an output term, a value combined into the register and never
+read back as the cell's `v`: `freq`, `pw` and `cut` add it (wrapped to the register: 16, 12 and 11
+bits), `ctrl` xors it (`mask`, below `$FF`, the bit 0 left to the gate). It is held in
+`mask.freq`, `mask.pw`, `mask.cut` and `mask.ctrl`: the slot after the cell's slots, bound as any
+slot is (a row key, an event command, an instrument field; `mask.filter` for `cut`'s) and
+firing in the cell's phase after the cell's slots, `v` the term's own previous value, `phi` counting
+from the bind. A plain integer is a write that holds (the term takes it in the cell's phase, the
+binding then unbound); `none` ends the binding, the term holding its value; `hold` and `reset`
+of the cell do not reach it. The term starts at 0. A song cell's term follows the cell's owner
+and `global` rules: binding it counts as binding the cell, and it fires with the cell's slots.
+`mask:m` is the `ctrl` term's integer write as before: at once, as the row applies, the bits `$FE`.
+
+### Reading cells
+
+An expression reads `freq pw ctrl ad sr cut res route mode vol` as that cell's value, the term not
+included: the voice's own cell for a voice cell and the song's for a song cell, of the voice that
+bound the slot. The value is whatever the cell holds when the reading phase runs, so a cell whose
+phase has not run yet in the tick holds the previous tick's value, and the `order` line decides
+it. A cell's own name reads the value it held when the tick began, `v` that of the slot before.
+The native call machine has no form for them and the Python machine plays them.
+
 ## Slots
 
 `slots:{cell:{name:{mod:m,hold:[...],reset:[...]},...},...}` names, per cell (any of the ten),
@@ -505,7 +529,7 @@ note, in grammar order, a cell's commands in the order written.
 | `CELL:b`, `slot.CELL:b` | binds the cell's slot to `b`: a call, an `asm{...}` body or a quoted expression; a song cell's reads this voice's notes |
 | `CELL:n`, `slot.CELL:n` | a plain integer, a write (see [Cells](#cells)) |
 | `CELL:none`, `CELL:hold`, `CELL:reset` | see [Stops](#stops) |
-| `tempo:n`, `tempo:a/b`, `vtempo:...` | see [Time](#time) |
+| `tempo:t0/t1/...`, `vtempo:t0/t1/...` | see [Time](#time) |
 | `freq:n`, `freq:+n`, `freq:-n` | writes `F(N) + n` to the frequency's slot |
 | `freq:b`, `slot.freq:b` | ... to `b`, a call, an `asm{...}` body or a quoted expression |
 | `legato` | see [Notes](#notes) |
@@ -602,11 +626,13 @@ Each frame writes the registers the cells made `lag` calls before its last call 
 
 | register | value |
 |---|---|
-| `$D400 + 7(i-1)`, `+1` | frequency low, high |
-| `+2`, `+3` | pulse width low, high (bits 8-11) |
-| `+4` | `((ctrl ^ mask) & $FE) \| (ctrl & gate & 1)` |
+| `$D400 + 7(i-1)`, `+1` | frequency low, high: the `freq` cell plus its term wrapped to 16 bits |
+| `+2`, `+3` | pulse width low, high (bits 8-11), the `pw` cell plus its term wrapped to 12 bits |
+| `+4` | `((ctrl ^ mask) & $FE) \| (ctrl & gate & 1)`, `mask` the `ctrl` term |
 | `+5`, `+6` | `ad`, `sr` |
 | `$D415` | `cut & 7` |
 | `$D416` | `cut >> 3` |
+
+`cut` there is the cell plus its term wrapped to 11 bits.
 | `$D417` | `res << 4 \| route` |
 | `$D418` | `mode \| vol` |

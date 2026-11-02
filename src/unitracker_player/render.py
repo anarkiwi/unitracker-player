@@ -104,7 +104,7 @@ def snapshot(player: Player, periods: _Periods) -> tuple:
         if any(x >= c for x in v)
     }
     delay = tuple(map(tuple, player._delay))  # pylint: disable=protected-access
-    cells = (player.chip, player.owner, mods)
+    cells = (player.chip, player.owner, player.term, mods)
     return _freeze((voices, cells, sequencer, ins, pending, held, delay), c)
 
 

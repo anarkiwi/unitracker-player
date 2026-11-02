@@ -5,7 +5,7 @@ from collections import defaultdict, deque
 
 import numpy as np
 from tqdm import tqdm
-from unitracker_grammar.cells import MASKS, SONG_CELLS, VOICE_CELLS
+from unitracker_grammar.cells import MASKS, SONG_CELLS, TERM, TERMS, VOICE_CELLS
 
 from unitracker_player.code import Routine
 from unitracker_player.compiler import (
@@ -63,17 +63,24 @@ __all__ = [
 ]
 
 
+def _slots(song: Song, cell: str) -> list:
+    """The empty modulator slots of ``cell``, its term's after them where it has one."""
+    return [None] * (len(song.slots[cell]) + (cell in TERMS))
+
+
 class _Voice:  # pylint: disable=too-many-instance-attributes
     """A voice's cells, note state, modulators and program slots; ``mods`` holds its cells'
-    modulator slots, each modulator ``[fn, phi, voice, slot.cell, by command, once]``, and
-    ``lost`` the calls each program slot has not counted."""
+    modulator slots, each modulator ``[fn, phi, voice, slot.cell, by command, once]``, the term of
+    a cell that has one after its slots; ``term`` the terms' values, and ``lost`` the calls each
+    program slot has not counted."""
 
     def __init__(self, song: Song):
-        self.freq = self.pw = self.ctrl = self.ad = self.sr = self.mask = self.gate = 0
+        self.freq = self.pw = self.ctrl = self.ad = self.sr = self.gate = 0
+        self.term = {cell: 0 for cell in TERMS if cell in VOICE_CELLS}
         self.env = None
         self.note = self.absolute = None
         self.relative = 0
-        self.mods = {cell: [None] * len(song.slots[cell]) for cell in VOICE_CELLS}
+        self.mods = {cell: _slots(song, cell) for cell in VOICE_CELLS}
         self.freq_hold = False
         self.slots = [[None, 0, 0] for _ in song.kinds]
         self.lost = [0] * len(song.kinds)
@@ -82,7 +89,7 @@ class _Voice:  # pylint: disable=too-many-instance-attributes
     def control(self) -> int:
         """The control register: the cell's ``ctrl`` with the TEST mask, the gate bit only where
         the gate is on."""
-        return ((self.ctrl ^ self.mask) & 0xFE) | (self.ctrl & self.gate & 1)
+        return ((self.ctrl ^ self.term["ctrl"]) & 0xFE) | (self.ctrl & self.gate & 1)
 
     def settle(self) -> list:
         """The voice's ``(sr, ad, ctrl)`` writes of the call: those of its env, whose values the
@@ -119,7 +126,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         self.voices = [_Voice(song) for _ in range(song.voices)]
         self._layers = {k: [s for s, own in enumerate(song.kinds) if own == k] for k in SLOTS}
         self.chip = dict.fromkeys(SONG_CELLS, 0)
-        self.song_mods = {cell: [None] * len(song.slots[cell]) for cell in SONG_CELLS}
+        self.song_mods = {cell: _slots(song, cell) for cell in SONG_CELLS}
+        self.term = {cell: 0 for cell in TERMS if cell in SONG_CELLS}
         self.song_state = {cell: bytearray(song.state.get(cell, 0)) for cell in SONG_CELLS}
         self.owner = dict.fromkeys(SONG_CELLS)
         self._preset(song.regs)
@@ -319,16 +327,19 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         regs = self.regs if regs is None else regs
         for v, voice in enumerate(self.voices):
             at = 7 * v
-            regs[at] = voice.freq & 0xFF
-            regs[at + 1] = voice.freq >> 8
-            regs[at + 2] = voice.pw & 0xFF
-            regs[at + 3] = voice.pw >> 8
+            freq = (voice.freq + voice.term["freq"]) & MASKS["freq"]
+            pw = (voice.pw + voice.term["pw"]) & MASKS["pw"]
+            regs[at] = freq & 0xFF
+            regs[at + 1] = freq >> 8
+            regs[at + 2] = pw & 0xFF
+            regs[at + 3] = pw >> 8
             regs[at + 4] = voice.control()
             regs[at + 5] = voice.ad
             regs[at + 6] = voice.sr
         chip = self.chip
-        regs[21] = chip["cut"] & 7
-        regs[22] = chip["cut"] >> 3
+        cut = (chip["cut"] + self.term["cut"]) & MASKS["cut"]
+        regs[21] = cut & 7
+        regs[22] = cut >> 3
         regs[23] = chip["res"] << 4 | chip["route"]
         regs[24] = chip["mode"] | chip["vol"]
         return list(regs)
@@ -378,10 +389,18 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         if not (fresh or once) and mod is not None and mod[0] is fn and not mod[5]:
             mod[2], mod[4] = v, command
         else:
-            mods[slot] = [fn, 0, v, f"{self.song.slots[cell][slot]}.{cell}", command, once]
+            names = self.song.slots[cell]
+            mods[slot] = [
+                fn,
+                0,
+                v,
+                f"{names[slot] if slot < len(names) else TERM}.{cell}",
+                command,
+                once,
+            ]
         if cell in SONG_CELLS:
             self.owner[cell] = v
-        elif cell == "freq":
+        elif cell == "freq" and slot < len(self.song.slots[cell]):
             self.voices[v].freq_hold = False
 
     def _stop_filter(self, v: int, slots):
@@ -467,8 +486,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         for key, value in ops:
             if key == "env":
                 voice.env = value
-            elif key == "mask":
-                voice.mask = value & 0xFE
+            elif key == TERM:
+                voice.term["ctrl"] = value & 0xFE
                 voice.gate |= first
             elif key == "gate":
                 voice.gate = 1 if value else 0
@@ -536,16 +555,17 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         if self.observe:
             self.observe("leave", "instrument")
 
-    # pylint: disable-next=too-many-locals
-    def _chain(self, mods: list, value: int, cell: str, owner: int = 0) -> int | None:
-        """The cell's value ``value`` after its modulators ``mods`` fire, or None where it has
-        none. A slot fires on the value the slot before left unless it holds on its voice's events,
-        its phi first back at 0 on its reset events, and a once binding is then unbound."""
-        if not any(mods):
+    # pylint: disable-next=too-many-locals,too-many-arguments,too-many-positional-arguments
+    def _chain(self, mods: list, value: int, cell: str, owner: int, first: int, end: int):
+        """The value ``value`` after the modulators ``mods[first:end]`` of ``cell`` fire, or None
+        where they are all unbound. A slot fires on the value the slot before left unless it holds
+        on its voice's events, its phi first back at 0 on its reset events, and a once binding is
+        then unbound."""
+        if not any(mods[first:end]):
             return None
         c, mask, marked, observe = self.call, MASKS[cell], self._marked, self.observe
-        for k, mod in enumerate(mods):
-            if mod is None:
+        for k in range(first, end):
+            if (mod := mods[k]) is None:
                 continue
             name = mod[3]
             keys = self._mark_keys.get(name)
@@ -565,6 +585,8 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
                 if type(fn) is Routine:  # pylint: disable=unidiomatic-typecheck
                     state = self.song_state if cell in SONG_CELLS else self.voices[mod[2]].state
                     out = fn(value, mod[1], *notes, state[cell]) & mask
+                elif fn.reads:
+                    out = fn(value, mod[1], *notes, self._reads(mod[2], fn.reads)) & mask
                 else:
                     out = fn(value, mod[1], *notes) & mask
                 if observe:
@@ -580,31 +602,51 @@ class Player:  # pylint: disable=too-many-instance-attributes,too-many-public-me
         voice = self.voices[v]
         return voice.sounding or 0, voice.note or 0
 
+    def _reads(self, v: int, names) -> dict:
+        """The values of cells ``names`` for an expression bound by voice ``v``: its own voice
+        cells and the song's."""
+        voice, chip = self.voices[v], self.chip
+        return {n: chip[n] if n in SONG_CELLS else getattr(voice, n) for n in names}
+
+    def _term(self, mods: list, terms: dict, cell: str, owner: int):
+        """Fires the term of ``cell`` held in ``terms``, the last of its modulators ``mods``."""
+        if cell in TERMS:
+            at = len(self.song.slots[cell])
+            out = self._chain(mods, terms[cell], cell, owner, at, at + 1)
+            if out is not None:
+                terms[cell] = out
+
     def _fire(self, cell: str):
         """Fires ``cell`` in its phase: a voice's cell for each voice in order, a song cell once,
-        a shared one only where it has an owner."""
+        a shared one only where it has an owner; the cell's slots, then its term."""
+        slots = len(self.song.slots[cell])
         if cell in SONG_CELLS:
             if cell in self._shared and self.owner[cell] is None:
                 return
-            out = self._chain(self.song_mods[cell], self.chip[cell], cell)
+            mods = self.song_mods[cell]
+            out = self._chain(mods, self.chip[cell], cell, 0, 0, slots)
             if out is not None:
                 self.chip[cell] = out
+            self._term(mods, self.term, cell, 0)
             return
         observe, freq = self.observe, cell == "freq"
         for v, voice in enumerate(self.voices):
             if freq:
                 self._fire_freq(v)
-            elif (mods := voice.mods[cell]) and any(mods):
-                out = self._chain(mods, getattr(voice, cell), cell, v)
+            else:
+                out = self._chain(voice.mods[cell], getattr(voice, cell), cell, v, 0, slots)
                 if out is not None:
                     setattr(voice, cell, out)
+            self._term(voice.mods[cell], voice.term, cell, v)
             if observe:
                 observe("cell", cell, v)
 
     def _fire_freq(self, v: int):
         voice = self.voices[v]
         n = voice.sounding
-        out = self._chain(voice.mods["freq"], voice.freq, "freq", v)
+        out = self._chain(
+            voice.mods["freq"], voice.freq, "freq", v, 0, len(self.song.slots["freq"])
+        )
         if out is not None:
             voice.freq = out
         elif n is not None and not voice.freq_hold:

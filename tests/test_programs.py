@@ -24,7 +24,7 @@ PROGS = doc(
     rows=("[p1,p2]", "[p2,p1]"),
     head="voices:2\ntempo:2\n",
     mods={"walk(s)": "v + s"},
-    restart={"hr(h,ad,sr)": "[{hold:h,gate:0,ad:ad,sr:sr},{},end]"},
+    restart={"hr(h,a,s)": "[{hold:h,gate:0,ad:a,sr:s},{},end]"},
     ctrl={"arp(a,b)": "[{ctrl:65,note:+a},{wait:1,note:-b}," "{wait:a,ctrl:64,note:+0},{loop:0}]"},
     pw={"pt(b)": "[{pw:b},{wait:1,pw:walk(b)},end]", "pw1": "pt(40)", "pa(b)": "walk(b)"},
     filter={"fl(c)": "[{cut:c,res:9,route:1,mode:16,vol:15},{wait:3,cut:walk(c)},end]"},
@@ -42,7 +42,7 @@ def _corpus():
 def test_program_templates_are_read_with_their_parameters():
     comp = _Compiler(read(PROGS), None)
     assert {k: v[:2] for k, v in comp.forms.items()} == {
-        "hr": ("restart", ("h", "ad", "sr")),
+        "hr": ("restart", ("h", "a", "s")),
         "arp": ("ctrl", ("a", "b")),
         "pt": ("pw", ("b",)),
         "fl": ("filter", ("c",)),

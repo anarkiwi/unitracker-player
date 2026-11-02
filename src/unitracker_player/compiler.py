@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from unitracker_grammar import PAL_HZ
-from unitracker_grammar.cells import CELLS, PHASE_OF
+from unitracker_grammar.cells import CELLS, PHASE_OF, TERM, TERMS
 from unitracker_grammar.code import Call, inline, signature
 from unitracker_grammar.expr import bind, tree
 from unitracker_grammar.model import (
@@ -163,11 +163,11 @@ def written(op) -> bool:
     return isinstance(op[0], int) and op[2] and constant(getattr(op[1], "node", None)) is not None
 
 
-def _tempo(value, where: str) -> tuple:
-    pair = value if isinstance(value, tuple) else (value, value)
-    if min(pair) < 1:
+def _tempo(value: tuple, where: str) -> tuple:
+    """The ticks of each step of a tempo list; PlayError for an entry of 0."""
+    if min(value) < 1:
         raise PlayError(f"{where}: a tempo of 0 ticks per step")
-    return pair
+    return value
 
 
 def _kind(name: str) -> str:
@@ -446,6 +446,8 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
         of the cell."""
         name, _, cell = key.rpartition(".")
         names = self.slots[cell]
+        if name == TERM:
+            return cell, self.term(key, cell, value)
         if name and name not in names:
             raise PlayError(f"{key}: {cell} has no slot {name}")
         slot = names.index(name) if name else 0
@@ -459,6 +461,16 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
             self.expression(value.value if isinstance(value, Once) else value, cell),
             once,
         )
+
+    def term(self, key: str, cell: str, value) -> tuple:
+        """A cell's term as its cell op: the term is the slot after the cell's slots; an integer
+        is a once binding of a constant, ``none`` ends the binding."""
+        slot = len(self.slots[cell])
+        if cell not in TERMS or value in (HOLD, RESET) or isinstance(value, (Once, Program)):
+            raise PlayError(f"{key}: a term is a binding, an integer or none, of {TERMS}")
+        if value == NONE:
+            return NONE, (slot,)
+        return slot, self.expression(value, cell, True), isinstance(value, int)
 
     def restart(self, ref) -> tuple | None:
         prog = self.program(ref, "restart")
@@ -532,18 +544,21 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
                 programs[kind] = program
         return programs, layers
 
-    def expression(self, value, cell: str):
-        """The modulator a binding of ``cell`` names: an integer, a call, a code body, or an
-        expression that names no template; a code template's is its :class:`Routine`."""
+    def expression(self, value, cell: str, term: bool = False):
+        """The modulator a binding of ``cell`` (of its ``term``) names: an integer, a call, a
+        code body, or an expression that names no template; a code template's is its
+        :class:`Routine`. A ``freq`` binding's constant is an offset of ``F(N)``, a term's is
+        the term."""
+        freq = cell == "freq" and not term
         if isinstance(value, int):
-            return self.fn(offset(int(value)) if cell == "freq" else ast.Constant(int(value)))
+            return self.fn(offset(int(value)) if freq else ast.Constant(int(value)))
         if isinstance(value, Call):
-            return self.call(value, cell)
+            return self.call(value, cell, term)
         if isinstance(value, Code):
             return self.anonymous(value, cell)
-        return self.fn(tree(value.text), cell == "freq")
+        return self.fn(tree(value.text), freq)
 
-    def call(self, value: Call, cell: str):
+    def call(self, value: Call, cell: str, term: bool = False):
         """The modulator of a call: its template with each declared parameter its argument,
         memoised by the template, the cell and the arguments."""
         if value.name not in self.templates and value.name in PRELUDE_TEMPLATES:
@@ -553,9 +568,9 @@ class _Compiler:  # pylint: disable=too-many-instance-attributes,too-many-public
             declared = self.signatures[value.name]
         if len(declared) != len(value.args):
             raise PlayError(f"{value}: {value.name} takes {len(declared)} argument(s)")
-        bag, key = dict(zip(declared, value.args)), ("call", value, cell)
+        bag, key = dict(zip(declared, value.args)), ("call", value, cell, term)
         if not isinstance(template, Code):
-            return self.fn(bind(tree(template.text), bag), cell == "freq", key)
+            return self.fn(bind(tree(template.text), bag), cell == "freq" and not term, key)
         if key not in self.memo:
             self.machine = self.machine or self._machine()
             self.memo[key] = self.machine.compile(value.name, template.statements, bag, cell)
@@ -644,7 +659,7 @@ def compile_document(doc: Document, compiler=None) -> Song:
     frame, full = head.calls or (1, None)
     return Song(
         voices,
-        _tempo(6 if head.tempo is None else head.tempo, "tempo"),
+        _tempo((6,) if head.tempo is None else head.tempo, "tempo"),
         clock_hz,
         init,
         tuple(timeline),
